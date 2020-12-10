@@ -1,0 +1,87 @@
+## 1. Apache Impala介绍(Impala是什么，应用场景)
+	
+	### 1.Impala是什么(impala 黑斑羚)
+	** Impala 是 cloudera 提供的一款高效率的 sql 查询工具，提供实时的查询效果，
+	官方测试性能比 hive 快 10 到 100 倍，其 sql 查询比 sparkSQL 还要更加快速， 
+	号称是当前大数据领域最快的查询 sql 工具 **
+	** Impala 是基于 hive 并使用内存进行计算，兼顾数据仓库，具有实时，批处理，多并发等优点的SQL查询工具 **
+	** Impala 是基于 hive 的大数据分析SQL查询引擎 **
+	
+	### 2.Impala 与 Hive 的关系、Impala应用场景
+	impala 是基于 hive 的大数据分析查询引擎，直接使用 hive 的元数据库metadata
+	
+	**1.Impala 与 Hive 应用场景 **
+	- Impala 适合于实时的交互式查询分析。
+	- Hive   适合于延时的批处理查询分析。
+	
+	**2.Impala 与 Hive 异同 **
+	① Impala 跟 Hive 最大的优化区别在于：Impala没有使用 MapReduce 进行并行计算
+	② 与 MapReduce 相比，Impala 把整个查询分成1个执行计划树，而不是一连串的 MapReduce 任务，在分发执行计划后， Impala 使
+	用拉式获取数据的方式获取结果，把结果数据组成按执行计划树流式传递汇集，减少的了把中间结果写入磁盘的步骤，再从磁盘读取数据的开销。
+	
+	
+	### 3.Impala架构组件
+	**Impala 主要由 Impalad、 State Store、 Catalogd 和 CLI 组成。**
+	1. impalad: 与 DataNode 运行在同一节点上， 由 Impalad 进程表示，它接收客
+	户端的查询请求。
+	2. Impala State Store: 跟踪集群中的 Impalad 的健康状态及位置信息， 由
+	statestored 进程表示。
+	3. CLI: 提供给用户查询使用的命令行工具。
+	4. Catalogd： 作为 metadata 访问网关，从 Hive Metastore 等外部 catalog 中获
+	取元数据信息，放到 impala 自己的 catalog 结构中。
+	
+	
+## 2. Impala 的安装部署（参考讲义）
+	集群提前安装好 hadoop， hive
+	
+	### 1.下载安装包、依赖包
+	由于 impala 没有提供 tar 包进行安装，只提供了 rpm 包。因此在安装 impala
+	的时候，需要使用 rpm 包来进行安装。 rpm 包只有 cloudera 公司提供了，所以去
+	cloudera 公司网站进行下载 rpm 包即可。
+	
+	### 2.安装 Impala
+	①集群规划
+	服务名称              从节点  从节点  主节点
+	impala-catalog                       Node-3
+	impala-state-store                   Node-3
+	impala-server(impalad) Node-1 Node-2 Node-3
+
+	② 主节点安装
+	yum install -y impala impala-server impala-state-store impala-catalog impala-shell
+	③从节点安装
+	yum install -y impala-server
+	④⑤⑥
+	
+## 3. Impala的使用
+	
+	### 1.Impala的shell使用
+	**1.impala-shell命令 **
+	通过impala-shell 命令进入交互式CLI，之后可以执行SQL的语法
+	
+	### 2.Impala sql 语法（参考讲义）
+	Impala sql 语法与Hive基本一致，通过学习Hive的sql语法掌握
+	
+	### 3.Impala 数据导入方式
+	数据导入方式和Hive的加载数据一致sql，参考讲义
+	```
+	# 1.load data
+	load data inpath '/user/impala/' into table user;
+	# 2.insert into values
+	insert into table t_test2 values(1,”zhangsan”);
+	# 3.insert into select
+	insert into table t_test3 select id from t_test2;
+	# 4.create as select
+	create table stu3 as select * from stu2; 
+	```
+	
+	### 4.Impala 的 java 开发（如何使用，参考讲义）
+	在实际工作当中，因为 impala 的查询比较快，所以可能有会使用到 impala
+	来做数据库查询的情况， 可以通过 java 代码来进行操作 impala 的查询。
+	类似JDBC的开发
+	
+
+
+
+
+
+

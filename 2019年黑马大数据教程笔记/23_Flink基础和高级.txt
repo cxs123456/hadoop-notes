@@ -1,0 +1,824 @@
+## 1.Flink介绍
+	### 1.1 什么是Flink()
+	**1.Flink概述：**
+	- 分布式的`计算引擎`。
+	- 支持`批处理`，即处理静态的数据集、历史的数据集。
+	- 支持`流处理`，即实时地处理一些实时数据流。
+	- 支持`基于事件`的应用【比如说滴滴通过Flink CEP实现实时监测司机的行为流来判断司机的行为是否正当】。
+
+	Stateful Computations over Data Streams ，即数据流上的有状态的计算。
+
+	**2.Flink特点：**
+	- 性能优秀(尤其在流计算领域)
+	- 高可扩展性
+	- 支持容错
+	- 纯内存式的计算引擎，做了内存管理方面的大量优化
+	- 支持eventime的处理
+	- 支持超大状态的Job(在阿里巴巴中作业的state大小超过TB的是非常常见的)
+	- 支持exactly-once的处理。
+
+	**Flink计算平台运行在开源的Hadoop集群之上。**
+		采用Hadoop的YARN做为资源管理调度，以 HDFS作为数据存储。
+		因此，Flink可以和开源大数据软件Hadoop无缝对接。
+
+	**3.应用场景（实时计算平台）：**
+		基于Apache Flink在阿里巴巴搭建的平台于2016年正式上线，并从阿里巴巴的 搜索 和 推荐 这两大场景开始实现。
+		目前阿里巴巴所有的业务，包括阿里巴巴所有子公司都采用了基于Flink搭建的实时计算平台。
+		阿里在Flink的应用主要包含四个模块：实时监控、实时报表、流数据分析和实时仓库。
+
+## 2.Flink集群安装
+	**1.安装模式：**
+	- local（本地）：单机模式，一般不使用
+	- standalone ：独立模式，Flink自带集群，开发测试环境使用
+	- yarn：计算资源统一由Hadoop YARN管理，生产测试环境使用
+
+	### 2.1 Standalone模式集群安装部署
+	**Standalone集群架构：**
+
+	1. client客户端提交任务给JobManager
+	2. JobManager负责Flink集群计算资源管理，并分发任务给TaskManager执行
+	3. TaskManager定期向JobManager汇报状态
+
+	**1.环境准备:**
+	- 服务器: node01(Master + Slave)
+	- 服务器: node02(Slave)
+	- 服务器: node03(Slave)
+
+	**2.安装步骤:**
+	①上传并解压缩flink压缩包
+	`tar -zxvf flink-1.6.1-bin-hadoop27-scala_2.11.tgz -C /export/servers/`
+	②修改配置 conf/flink-conf.yaml
+	``` shell
+		# jobManager 的IP地址
+		jobmanager.rpc.address: node01
+
+		# JobManager 的端口号
+		jobmanager.rpc.port: 6123
+
+		# JobManager JVM heap 内存大小
+		jobmanager.heap.size: 1024
+
+		# TaskManager JVM heap 内存大小
+		taskmanager.heap.size: 1024
+
+		# 每个 TaskManager 提供的任务 slots 数量大小
+		taskmanager.numberOfTaskSlots: 2
+
+		#是否进行预分配内存，默认不进行预分配，这样在我们不使用flink集群时候不会占用集群资源
+		taskmanager.memory.preallocate: false
+
+		# 程序默认并行计算的个数
+		parallelism.default: 1
+
+		#JobManager的Web界面的端口（默认：8081）
+		jobmanager.web.port: 8081
+
+		#配置每个taskmanager生成的临时文件目录（选配）
+		taskmanager.tmp.dirs: /export/servers/flink-1.6.1/tmp
+	```
+	③使用vi修改slaves文件
+	```
+		node01
+		node02
+		node03
+	```
+	④修改系统环境变量配置文件，添加HADOOP_CONF_DIR目录，分发到其他两个节点，每个节点加载环境变量
+	``` shell
+		vi /etc/profile
+		export HADOOP_CONF_DIR=/export/servers/hadoop-2.7.5/etc/hadoop
+		scp -r /etc/profile node02:/etc
+		scp -r /etc/profile node03:/etc
+		source /etc/profile
+	```
+	⑤将flink包再分发到其他节点
+	``` shell
+		scp -r /export/servers/flink-1.6.1/ node02:/export/servers/
+		scp -r /export/servers/flink-1.6.1/ node03:/export/servers/
+	```
+	⑥启动Flink集群，启动HDFS集群并且创建目录测试wordcount
+	``` shell
+		./bin/start-cluster.sh
+
+		cd /export/servers/hadoop-2.7.5/sbin
+		start-all.sh
+		# HDFS中创建/test/input目录
+		hdfs dfs -mkdir -p /test/input
+		# 上传wordcount.txt文件到HDFS /test/input目录
+		hdfs dfs -put /export/servers/flink-1.6.1/README.txt /test/input
+	```
+	⑦并运行测试任务
+	``` shell
+		bin/flink run /export/servers/flink-1.6.1/examples/batch/WordCount.jar --input \
+		hdfs://node01:8020/test/input/README.txt --output hdfs://node01:8020/test/output2/result.txt
+	```
+	⑧浏览Flink Web UI界面
+	http://node01:8081
+
+	**Standalone高可用HA模式(参考讲义)**
+
+	**3.集群命令：**
+	**启动/停止flink集群**
+	- 启动：./bin/start-cluster.sh  
+	- 停止：./bin/stop-cluster.sh
+		
+	**启动/停止jobmanager**
+	如果集群中的jobmanager进程挂了，执行下面命令启动
+	- bin/jobmanager.sh start
+	- bin/jobmanager.sh stop
+			
+	**启动/停止taskmanager**
+	添加新的taskmanager节点或者重启taskmanager节点
+	- bin/taskmanager.sh start
+	- bin/taskmanager.sh stop
+
+	### 2.2 Yarn集群环境
+	**Flink与Yarn的交互：**
+	1. 上传jar包和配置文件到HDFS集群上
+	2. 申请资源和请求AppMaster容器
+	3. Yarn分配资源AppMaster容器，并启动JobManager
+	4. 申请worker资源，启动TaskManager
+
+	Flink运行在YARN上，使用 yarn-session 来提交作业到YARN集群。
+	**yarn-session提供两种模式: 会话模式 和 分离模式**
+	会话模式
+	- 使用Flink中的yarn-session（yarn客户端），会启动两个必要服务JobManager和TaskManager
+	- 客户端通过yarn-session提交作业
+	- yarn-session会一直启动，不停地接收客户端提交的作用
+	- 有大量的小作业，适合使用这种方式
+		
+	分离模式
+	- 直接提交任务给YARN
+	- 大作业，适合使用这种方式
+
+	使用步骤：
+	``` shell
+		# 1.在flink目录启动yarn-session，命令的参数说明参考讲义
+		bin/yarn-session.sh -n 2 -tm 800 -s 1 -d
+		# 2.使用flink提交任务
+		bin/flink run examples/batch/WordCount.jar
+		# 3.如果程序运行完了，可以使用 yarn application -kill application_id 杀掉任务
+		yarn application -kill application_1554377097889_0002
+		
+		# 4.使用flink直接提交任务 (分离模式)
+		bin/flink run -m yarn-cluster -yn 2 ./examples/batch/WordCount.jar
+	```
+
+---
+## 3.Flink架构介绍
+	### 3.1 Flink的4个基石
+	**1.四个基石：Checkpoint、State、Time、Window**
+	1. Checkpoint：检查点，基于Chandy-Lamport 算法，实现了分布式一致性快照，提供了一致性的语义。
+	2. State：状态管理，丰富的State API，包括ValueState、ListState、MapState，BroadcastState。
+	3. Time：实现了 Watermark(水印) 的机制，能够支持基于 事件的时间 的处理，乱序数据的处理，迟到数据的容忍。
+	4. Window：开箱即用的各种窗口，比如 滑动窗口 、 滚动窗口 、 会话窗口 以及非常灵活的 自定义的窗口。
+
+	### 3.2 Flink数据流编程模型抽象级别
+	- Stateful Stream Processing：最底层提供了有状态流，通过最底层提供了有状态流，通过 过程函数（Process Function）嵌入到 DataStream API 中。它允许用户可以自由地处理来自一个或多个流数据的事件，并使用一致、容错的状态。
+	- DataStream/DataSet API：是 Flink 提供的核心 API ，DataSet 处理有界的数据集，DataStream 处理有界或者无界的数据流。
+	- Table API： 是以“表”为中心的声明式 DSL
+	- SQL：Flink 提供的最高层级的抽象是 SQL
+
+	### 3.3 Flink程序结构
+	① Source: 数据源，Flink 在流处理和批处理上的 source 大概有 4 类：基于本地集合的 source、基于文件的 source、
+		基于网络套接字的 source、自定义的 source。自定义的 source 常见的有 Apache kafka、RabbitMQ 等，当然你也可以
+		定义自己的 source。
+	② Transformation：数据转换的各种操作，有 Map / FlatMap / Filter / KeyBy / Reduce / Fold / Aggregations / Window /
+		WindowAll / Union / Window join / Split / Select等
+	③ Sink：接收器，Flink 将转换计算后的数据输出的位置，Flink 常见的 Sink 大概有如下几类：
+		写入文件、打印出来、写入 socket 、自定义的 sink。
+
+	**1.Flink并行数据流**
+	1.Flink程序在执行的时候，会被映射成一个Streaming Dataflow，一个Streaming Dataflow是由一组 Stream 和 Transformation Operator 组成的。
+	在启动时从一个或多个 Source Operator 开始，结束于一个或多个Sink Operator。
+
+	2.Flink程序本质上是并行的和分布式的，在执行过程中，一个流(stream)包含一个或多个Stream Partition(流分区)，
+		而每一个operator包含一个或多个operator sutask(操作子任务)。
+	操作子任务间彼此独立，在不同的线程中执行，甚至是在不同的机器或不同的容器上。
+	operator子任务的数量是这一特定operator的并行度。
+	相同程序中的不同operator有不同级别的并行度。
+
+	3.数据在两个operator之间传递的时候有两种模式：
+	- One to One模式：两个operator用此模式传递的时候，会保持数据的分区数和数据的排序
+	- redistributing （重新分配）模式：这种模式会改变数据的分区数；
+		每个一个operator subtask会根据选择transformation把数据发送到不同的目标subtasks,
+		比如keyBy()会通过hashcode重新分区,broadcast()和rebalance()方法会随机重新分区；
+
+	**2.Task和Operator chain**
+	Flink的所有操作都称之为Operator，客户端在提交任务的时候会对Operator进行优化操作，能进行合并的Operator会
+	被合并为一个Operator，合并后的Operator称为 Operator chain ，实际上就是一个执行链，每个执行链会在
+	TaskManager上一个独立的线程中执行。
+
+	### 3.4 任务调度与执行组件
+	**1.JobManager和TaskManager**
+	- JobManager    
+	  - 主要职责是调度工作并协调任务做检查点
+	  - 集群中至少要有一个 master，master 负责调度 task，协调checkpoints 和容错，
+	  - 高可用设置的话可以有多个 master，但要保证一个是 leader, 其他是standby;
+	  - Job Manager 包含 Actor System、Scheduler、CheckPoint三个重要的组件
+	  - JobManager从客户端接收到任务以后, 首先生成优化过的执行计划, 再调度到TaskManager中执行
+	- TaskManager
+	  - 主要职责是从JobManager处接收任务, 并部署和启动任务, 接收上游的数据并处理
+	  - Task Manager 是在 JVM 中的一个或多个线程中执行任务的工作节点。
+	  - TaskManager在创建之初就设置好了Slot, 每个Slot可以执行一个任务
+
+	**2.任务槽（task-slot）和槽共享（Slot Sharing）**
+	每个TaskManager是一个JVM的 进程 ,可以创建线程中执行一个或多个子任务。
+
+	任务槽（task-slot）：控制worker(TaskManager)能接收多少个task，一个worker至少有一个task slot，flink还将进程的内存进行了划分到多个slot中。。
+	槽共享（Slot Sharing）：默认情况下，Flink允许子任务共享插槽，即使它们是不同任务的子任务，只要它们来自同一个作业。
+		结果是一个槽可以保存作业的整个管道。允许 插槽共享 有两个主要好处：
+		- 资源分配更加公平。
+		- 可以将基本并行度（base parallelism）从2提升到6.提高了分槽资源的利用率。
+
+	### 3.5 Flink统一的流处理与批处理
+	**1.流处理与批处理数据传输方式：**
+	- 流处理，其节点间数据传输的标准模型是：当一条数据被处理完成后，序列化到缓存中，然后立刻通过网络传输到下一个节点，由下一个节点继续处理。
+	- 批处理，其节点间数据传输的标准模型是：当一条数据被处理完成后，序列化到缓存中，并不会立刻通过网络传输到下一个节点，当缓存写满，
+		就持久化到本地硬盘上，当所有数据都被处理完成后，才开始将处理后的数据通过网络传输到下一个节点
+
+	**1.Flink流处理与批处理数据传输方式：**
+	Flink以固定的'缓存块'为单位进行数据传输，用户可以通过'设置缓存块超时值'指定缓存块的传输时机。
+	如果缓存块的超时值为0，则Flink的数据传输方式类似`流处理`系统的标准模型
+	如果缓存块的超时值为无限大，则Flink的数据传输方式类似`批处理`系统的标准模型
+
+	同时缓存块的超时值也可以设置为0到无限大之间的任意值。
+	缓存块的超时阈值越小，则Flink流处理执行引擎的数据处理延迟越低，但吞吐量也会降低，反之亦然。通过调整缓存块的超时阈值，
+	用户可根据需求灵活地权衡系统延迟和吞吐量
+
+	### 3.6 Flink的应用场景
+	阿里在Flink的应用主要包含四个模块：实时监控、实时报表、流数据分析和实时仓库。
+
+	其实Flink主要用在如下三大场景：
+	场景一：Event-driven Applications【事件驱动】
+	事件驱动型应用是一类具有状态的应用，它从一个或多个事件流提取数据，并根据到来的事件触发计算、状态更新或其他外部动作。
+	事件驱动型应用是基于状态化流处理来完成。在该设计中，数据和计算不会分离，应用只需访问本地（内存或磁盘）即可获取数据。
+	系统容错性的实现依赖于定期向远程持久化存储写入 checkpoint
+
+	场景二：Data Analytics Applications【数据分析】
+	数据分析任务需要从原始数据中提取有价值的信息和指标。
+	Data Analytics Applications包含Batch analytics（批处理分析）和Streaming analytics（流处理分析）
+
+	场景三：Data Pipeline Applications【数据管道】
+	数据管道和 ETL 作业对比
+	- ETL 作业通常会周期性地触发，将数据从事务型数据库拷贝到分析型数据库或数据仓库
+	- 数据管道是以持续流模式运行，而非周期性触发，支持从一个不断生成数据的源头读取记录，并将它们以低延迟移动到终点。
+	例如：数据管道可以用来监控文件系统目录中的新文件，并将其数据写入事件日志；
+	另一个应用可能会将事件流物化到数据库或增量构建和优化查询索引。
+
+	--
+## 4.Flink的API使用
+	Flink 应用程序结构主要包含三部分,Source/Transformation/Sink
+	Source: 数据源，Flink 在流处理和批处理上的 source 大概有 4 类：
+	- 基于本地集合的 source
+	- 基于文件的 source
+	- 基于网络套接字的 source
+	- 自定义的 source。自定义的 source 常见的有 Apache kafka、Amazon Kinesis Streams、RabbitMQ、Twitter Streaming API、Apache NiFi 等，
+		当然你也可以定义自己的 source。
+
+	Transformation：数据转换的各种操作，有 Map / FlatMap / Filter / KeyBy / Reduce / Fold / Aggregations / Window /
+		WindowAll / Union / Window join / Split / Select / Project 等，操作很多，可以将数据转换计算成你想要的数据。
+	Sink：接收器，Flink 将转换计算后的数据输出位置
+
+	### 4.1 批处理
+	> **批处理程序，数据DataSet**
+
+	__课程目标__
+	*   Flink的批处理Source
+		*   基于本地集合
+		*   基于文件
+		*   基于CSV
+		*   基于压缩文件
+	*   Flink的Transformation
+		*   map
+		*   flatmap
+		*   filter
+		*   reduce
+		*   rebalance
+	*   Flink的Sink
+		*   写入集合
+		*   写入文件
+	*   Flink程序本地执行和集群执行
+	*   Flink的广播变量
+	*   Flink的累加器
+	*   Flink的分布式缓存
+
+	环境搭建(参考讲义)：pom引入Flink依赖、创建Scala包
+
+	#### 4.1.1 Flink批处理Source
+	Flink在批处理中常见的source主要有两大类。
+	- 基于本地集合的source（Collection-based-source）
+	- 基于文件的source（File-based-source）
+
+	**批处理开发代码：**
+	``` scala
+	import org.apache.flink.api.scala.ExecutionEnvironment
+	import scala.collection.mutable._
+	import org.apache.flink.api.scala._
+	/**
+	在Flink中最常见的创建本地集合的DataSet方式有三种。
+	1. 使用env.fromElements()，这种方式也支持Tuple，自定义对象等复合形式。
+	2. 使用env.fromCollection(),这种方式支持多种Collection的具体类型。
+	3. 使用env.generateSequence(),这种方法创建基于Sequence的DataSet。
+	**/
+	object BatchFromCollection {
+	  def main(args: Array[String]): Unit = {
+		//获取flink执行环境
+		val env = ExecutionEnvironment.getExecutionEnvironment
+
+		//导入隐式转换
+		import org.apache.flink.api.scala._
+		//1.用element创建DataSet fromElements 
+		val ds0: DataSet[String] = env.fromElements("spark", "flink")
+		
+		ds0.print()
+		//2.用Array创建DataSet fromCollection
+		val ds2: DataSet[String] = env.fromCollection(Array("spark", "flink"))
+		ds2.print()
+		
+		//3.用fromElements创建DataSet generateSequence
+		val ds3: DataSet[Long] = env.generateSequence(1, 9)
+		ds3.print()
+	  }
+	}
+
+	/**
+	Flink支持直接从外部文件存储系统中读取文件的方式来创建Source数据源有以下几种:
+	1. 读取本地文件数据
+	2. 读取HDFS文件数据
+	3. 读取CSV文件数据
+	4. 读取压缩文件
+	5. 遍历目录
+	**/
+	object BatchFromFile {
+	  def main(args: Array[String]): Unit = {
+		//获取flink执行环境
+		val env:ExecutionEnvironment = ExecutionEnvironment.getExecutionEnvironment
+
+		//导入隐式转换
+		import org.apache.flink.api.scala._
+		//1.读取本地文件
+		val ds1: DataSet[String] = env.readTextFile("data.txt")
+		ds1.print()
+		
+		//2.读取HDFS文件数据
+		val ds2: DataSet[String] = env.readTextFile("hdfs://node01:8020/README.txt")
+		ds2.print()
+		
+		//3.读取CSV文件数据
+		// 用于映射CSV文件的样例类
+		case class Student(id:Int, name:String) 
+		val ds3: DataSet[String] = env.readCsvFile[Student]("./data/input/subject.csv")
+		ds3.print()	
+		
+		//4.读取压缩文件
+		val ds4: DataSet[String] = env.readTextFile(""D:\\BaiduNetdiskDownload\\hbase-1.3.1-bin.tar.gz"")
+		ds4.print()
+		
+		//5.遍历目录
+		val parameters = new Configuration
+		// 开启递归
+		parameters.setBoolean("recursive.file.enumeration", true)
+		val ds5: DataSet[String] = env.readTextFile("D:\\data\\dataN").withParameters(parameters)
+		ds5.print()
+	  }
+	}
+	```
+
+	#### 4.1.2 Flink批处理Transformation
+	| Transformation  | 说明                                                         |
+	| --------------- | ------------------------------------------------------------ |
+	| map             | 将DataSet中的每一个元素转换为另外一个元素                    |
+	| flatMap         | 将DataSet中的每一个元素转换为0...n个元素                     |
+	| mapPartition    | 将一个分区中的元素转换为另一个元素                           |
+	| filter          | 过滤出来一些符合条件的元素                                   |
+	| reduce          | 可以对一个dataset或者一个group来进行聚合计算，最终聚合成一个元素 |
+	| reduceGroup     | 将一个dataset或者一个group聚合成一个或多个元素               |
+	| aggregate       | 按照内置的方式来进行聚合。例如：SUM/MIN/MAX..                |
+	| distinct        | 去重                                                         |
+	| join            | 将两个DataSet按照一定条件连接到一起，形成新的DataSet         |
+	| union           | 将两个DataSet取并集，并不会去重                              |
+	| rebalance       | 让每个分区的数据均匀分布，避免数据倾斜                       |
+	| partitionByHash | 按照指定的key进行hash分区                                    |
+	| sortPartition   | 指定字段对分区中的数据进行排序                               |
+
+	#### 4.1.3 Flink批处理Sink
+	flink在批处理中常见的sink。
+	- 基于本地集合的sink（Collection-based-sink）
+	- 基于文件的sink（File-based-sink）
+	``` scala
+	object BatchSink{
+	  def main(args: Array[String]): Unit = {
+		//获取flink执行环境
+		val env = ExecutionEnvironment.getExecutionEnvironment
+
+		//定义数据 stu(age,name,height)
+		val ds1: DataSet[(Int, String, Double)] = env.fromElements(
+		  (19, "zhangsan", 178.8),
+		  (17, "lisi", 168.8),
+		  (18, "wangwu", 184.8),
+		  (21, "zhaoliu", 164.8)
+		)   
+		
+		// 1 sink到本地Collection
+		print(ds1.collect())
+		
+		// 2.将数据写入本地文件，文本文档,NO_OVERWRITE模式下如果文件已经存在，则报错，OVERWRITE模式下如果文件已经存在，则覆盖
+		ds1.setParallelism(1).writeAsText("test/data1/aa", WriteMode.OVERWRITE)
+		
+		// 3.将数据写入HDFS
+		ds1.setParallelism(1).writeAsText("hdfs://bigdata111:9000/a", WriteMode.OVERWRITE)
+		
+		env.execute()
+	  }
+	}
+
+	```
+
+	#### 4.1.4 Flink程序本地执行和集群执行
+	**1.本地执行：**
+	Flink支持两种不同的本地执行local环境和集合环境
+	local环境：val env = ExecutionEnvironment.createLocalEnvironment() 
+	集合环境：ExecutionEnvironment.createCollectionsEnvironment()
+
+	**2.集群执行：**
+	有两种方法可将程序发送到群集以供执行：
+	*  使用命令行界面提交 ExecutionEnvironment.getExecutionEnvironment
+		./bin/flink run ./examples/batch/WordCount.jar --input file:///home/user/hamlet.txt --
+		output file:///home/user/wordcount_out
+	*  使用代码中的远程环境提交
+		ExecutionEnvironment.createRemoteEnvironment("node01",8081, "E:\\bigdata_ws\\flink-base\\target\\flink-base-1.0-SNAPSHOT.jar")
+		
+	#### 4.1.5 Flink的广播变量、累加器、分布式缓存
+	**1.广播变量：**
+	可以理解为是一个公共的共享变量，我们可以把一个dataset 数据集广播出去，然后不同的task在节点上
+	都能够获取到，这个数据在每个节点上只会存在一份。如果不使用broadcast，则在每个节点中的每个task中都需要拷
+	贝一份dataset数据集，比较浪费内存(也就是一个节点中可能会存在多份dataset数据)。
+	**使用步骤:**
+	``` scala
+		// 1：初始化数据
+		DataSet<Integer> toBroadcast = env.fromElements(1, 2, 3)
+		// 2：广播数据
+		.withBroadcastSet(toBroadcast, "broadcastSetName");
+		// 3：获取数据
+		Collection<Integer> broadcastSet = getRuntimeContext().getBroadcastVariable("broadcastSetName");
+	```
+
+	**2.累加器：**
+	Accumulator 即累加器，与 MapReduce counter 的应用场景差不多，都能很好地观察task在运行期间的数据变化
+	可以在Flink job任务中的算子函数中操作累加器，但是只能在任务执行结束之后才能获得累加器的最终结果。
+	**使用步骤:**
+	``` scala
+		// 1：创建累加器
+		private IntCounter numLines = new IntCounter(); 
+		// 2：注册累加器
+		getRuntimeContext().addAccumulator("num-lines", this.numLines);
+		// 3：使用累加器
+		this.numLines.add(1); 
+		// 4：获取累加器的结果
+		myJobExecutionResult.getAccumulatorResult("num-lines")
+	```
+
+	**3.分布式缓存：**
+	**使用步骤:**
+	``` scala
+		// 1：注册一个文件
+		env.registerCachedFile("hdfs:///path/to/your/file", "hdfsFile")  
+		// 2：访问数据
+		File myFile = getRuntimeContext().getDistributedCache().getFile("hdfsFile");
+	```
+	> 注意:广播是将变量分发到各个worker节点的内存上，分布式缓存是将文件缓存到各个worker节点上
+
+
+	### 4.2 流处理
+	> **流处理程序，数据DataStream**
+
+	**课程目标**
+	- Flink流处理的Source
+	  - 基于集合
+	  - 基于文件
+	  - 基于Socket
+	  - 自定义数据源
+	  - 使用Kafka作为数据源
+	  - 使用MySql作为数据源
+	- Flink流处理的Transformation
+	  - keyby
+	  - connect
+	  - split和select
+	- Flink流处理的Sink
+	  - sink到kafka
+	  - sink到mysql
+	- Flink的Window操作
+	  - 时间窗口
+	  - 计数窗口
+	  - 自定义窗口
+	- Flink的水印机制
+
+	StreamExecutionEnvironment.getExecutionEnvironment创建流处理的执行环境
+	StreamExecutionEnvironment.addSource(source) 来为你的程序添加数据来源
+	最后要执行 env.execute()
+	Source: Flink在流处理上的source和在批处理上的source基本一致
+	Transformation：大部分操作和批处理一样
+		和批处理不一样的一些操作：keyBy、Connect、split和select
+	Sink：接收器,sink到Kafka/mysql，自定义RichSinkFunction
+
+	#### 4.2.1 Flink流处理Source
+	Flink在流处理上的source和在批处理上的source基本一致。大致有4大类：
+	- 基于本地集合的source（Collection-based-source）
+	- 基于文件的source（File-based-source）- 读取文本文件，即符合 TextInputFormat 规范的文件，并将其作为字符串返回
+	- 基于网络套接字的source（Socket-based-source）- 从 socket 读取。元素可以用分隔符切分。
+		env.socketTextStream
+	- 自定义的source（Custom-source）,通过去实现 SourceFunction 或者它的子类 RichSourceFunction 类来自定义实现一些自定义的
+		source，Kafka创建source数据源类 FlinkKafkaConsumer010 也是采用类似的方式
+
+	#### 4.2.2 Flink流处理Transformation
+	大部分操作和批处理一样和批处理不一样的一些操作：keyBy、Connect、split和select
+	① keyBy：按照指定的key来进行分流，类似于批处理中的 groupBy 。可以按照索引名/字段名来指定分组的字段。
+	② Connect：用来将两个DataStream组装成一个 ConnectedStreams 。它用了两个泛型，即不要求两个dataStream的element是同一类型。
+	③ split：就是将一个DataStream分成多个流，用 SplitStream 来表示。
+	④ select：就是获取分流后对应的数据，跟split搭配使用，从SplitStream中选择一个或多个流。
+
+	#### 4.2.3 Flink流处理sink
+	Flink将数据进行sink操作到本地文件/本地集合/HDFS等和之前的批处理操作一致。
+	这里重点说下sink到Kafka以及MySQL的操作：
+
+	``` scala
+	// Sink到Kafka
+	object DataSink_kafka {
+	  def main(args: Array[String]): Unit = {
+		// 1. 创建流处理环境
+		val env = StreamExecutionEnvironment.getExecutionEnvironment
+		// 2. 设置并行度
+		env.setParallelism(1)
+		// 3. 添加自定义MySql数据源
+		val source: DataStream[(Int, String, String, String)] = env.addSource(new MySql_source)
+
+		// 4. 转换元组数据为字符串
+		val dataStream: DataStream[String] = source.map(
+		  line => line._1 + line._2 + line._3 + line._4
+		)
+		//5. 构建FlinkKafkaProducer010
+		val p: Properties = new Properties
+		p.setProperty("bootstrap.servers", "node01:9092,node02:9092,node03:9092")
+		val sink = new FlinkKafkaProducer010[String]("test2", new SimpleStringSchema(), p)
+		// 6. 添加sink
+		dataStream.addSink(sink)
+		// 7. 执行任务
+		env.execute("flink-kafka-wordcount")
+	  }
+	}
+
+	// Sink到MySQL
+	object DataSink_MySql {
+	  def main(args: Array[String]): Unit = {
+		//1.创建流执行环境
+		val env = StreamExecutionEnvironment.getExecutionEnvironment
+		//2.准备数据
+		val value: DataStream[(Int, String, String, String)] = env.fromCollection(List(
+		  (10, "dazhuang", "123456", "大壮"),
+		  (11, "erya", "123456", "二丫"),
+		  (12, "sanpang", "123456", "三胖")
+		))
+		// 3. 添加sink
+		value.addSink(new MySql_Sink)
+		//4.触发流执行
+		env.execute()
+	  }
+	}
+
+	// 自定义落地MySql的Sink
+	class MySql_Sink extends RichSinkFunction[(Int, String, String, String)] {
+
+	  private var connection: Connection = null
+	  private var ps: PreparedStatement = null
+
+	  override def open(parameters: Configuration): Unit = {
+		//1:加载驱动
+		Class.forName("com.mysql.jdbc.Driver")
+		//2：创建连接
+		connection = DriverManager.getConnection("jdbc:mysql:///test", "root", "123456")
+		//3:获得执行语句
+		val sql = "insert into user(id , username , password , name) values(?,?,?,?);"
+		ps = connection.prepareStatement(sql)
+	  }
+
+	  override def invoke(value: (Int, String, String, String)): Unit = {
+		try {
+		  //4.组装数据，执行插入操作
+		  ps.setInt(1, value._1)
+		  ps.setString(2, value._2)
+		  ps.setString(3, value._3)
+		  ps.setString(4, value._4)
+		  ps.executeUpdate()
+		} catch {
+		  case e: Exception => println(e.getMessage)
+		}
+	  }
+
+	  //关闭连接操作
+	  override def close(): Unit = {
+		if (connection != null) {
+		  connection.close()
+		}
+		if (ps != null) {
+		  ps.close()
+		}
+	  }
+	}
+	```
+
+	#### 4.2.4 Flink流处理Window操作
+	Flink 认为 Batch 是 Streaming 的一个特例，所以 Flink 底层引擎是一个流式引擎，在上面实现了流处理和批处理。
+	而窗口（window）就是从 Streaming 到 Batch 的一个桥梁。Flink 提供了非常完善的窗口机制
+	窗口类型：时间窗口、计数窗口
+	1. 根据 时间 进行截取(time-driven-window)，比如每1分钟统计一次或每10分钟统计一次。
+	2. 根据 消息数量 进行截取(data-driven-window)，比如每5个数据统计一次或每50个数据统计一次。
+
+	**1.时间窗口代码**
+	``` scala
+		// 4.设置窗口时间和窗口计算时间都是5s，需要给一个参数即可，每5秒钟统计一下各个路口通过红绿灯汽车的数量
+		val result = keyedStream.timeWindow(Time.seconds(5)).sum(1)
+		// 设置窗口时间是10秒，计算时间2秒
+		// keyByData.timeWindow(Time.seconds(10), Time.seconds(2))
+		// 5、显示统计结果
+		result.print()
+		// 6、触发流计算
+		env.execute()
+	```
+	**2.计数窗口代码**
+	``` scala
+		// 设置窗口个数进行统计
+		val result = keyByData.countWindow(3).sum(1)
+		// keyByData.countWindow(5, 3).sum(1)
+	```
+	Window apply
+	apply方法可以进行一些自定义处理，通过匿名内部类的方法来实现。当有一些复杂计算时使用
+	> **总结：**
+	1. 如果窗口计算时间 > 窗口时间，会出现数据丢失
+	2. 如果窗口计算时间 < 窗口时间，会出现数据重复计算
+	3. 如果窗口计算时间 = 窗口时间，数据不会被重复计算
+
+	#### 4.2.5 Flink流处理水印机制
+	**水印机制产生的原因：***
+	网络有延迟，数据有可能会延迟一会才到达Flink实时处理系统，会引起计算误差，水印就是为了解决数据乱序、数据延迟到达的问题。
+			
+	水印（watermark）就是一个时间戳，Flink可以给数据流添加水印。
+	可以理解为：收到一条消息后，额外给这个消息添加了一个时间字段，这就是添加水印。
+	- 水印并不会影响原有Eventtime
+	- 当数据流添加水印后，会按照水印时间来触发窗口计算
+	- 一般会设置水印时间，比Eventtime小几秒钟
+	- 当接收到的水印时间 >= 窗口的endTime，则触发计算
+
+	**Flink流处理时间方式：**
+	- EventTime[事件时间]
+	  事件发生的时间，例如：点击网站上的某个链接的时间
+	- IngestionTime[摄入时间]
+	  某个Flink节点的source operator接收到数据的时间，例如：某个source消费到kafka中的数据
+	- ProcessingTime[处理时间]
+	  某个Flink节点执行某个operation的时间，例如：timeWindow接收到数据的时间
+
+	设置Flink流处理的时间类型（一般在生产环境中，都是使用EventTime来进行计算的）：
+	``` scala
+		// 设置为按照事件时间来进行计算
+		env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
+		// 设置为按照处理时间来进行计算
+		env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime)
+	```
+	添加水印的代码
+	```
+		// 5. 添加水印
+		val watermarkDataStream = orderDataStream.assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks[Order] {
+		  var currentTimestamp = 0L
+		  val delayTime = 2000
+
+		  override def getCurrentWatermark: Watermark = {
+			//   - 允许延迟2秒
+			// - 在获取水印方法中，打印水印时间、当前事件时间和当前系统时间
+			val watermark = new Watermark(currentTimestamp - delayTime)
+			val dateFormat = FastDateFormat.getInstance("HH:mm:ss")
+
+			println(s"当前水印时间:${dateFormat.format(watermark.getTimestamp)}, 当前事件时间: ${dateFormat.format(currentTimestamp)}, 当前系统时间: ${dateFormat.format(System.currentTimeMillis())}")
+			watermark
+		  }
+
+		  override def extractTimestamp(element: Order, previousElementTimestamp: Long): Long = {
+			val timestamp = element.timestamp
+			currentTimestamp = Math.max(currentTimestamp, timestamp)
+			currentTimestamp
+		  }
+		})
+
+	```
+
+	### 4.3 Flink高级API
+	**课程目标**
+	- Flink的状态管理
+	  - keyed state
+	  - operator state
+	- Flink的CheckPoint
+	  - checkpoint的持久化方案
+	  - checkpoint持久化开发
+	- Flink SQL & Table API
+	  - DataSet/DataStream转Table
+	  - Table转DataSet/DataStream
+	  - SQL操作数据
+	  - TableAPI操作数据
+
+	#### 4.3.1 Flink的状态管理
+	什么是有状态的计算:计算任务的结果不仅仅依赖于输入，还依赖于它的当前状态，其实大多数的计算都是有状态的计算。
+	比如wordcount,计算单词的count,这是一个很常见的业务场景。count做为输出，在计算的过程中要不断的把输入累加
+	到count上去，那么count就是一个state。
+
+	从容错和消息处理的语义上(at least once, exactly once)，Flink引入了State 和 Checkpoint
+	* State:一般指一个具体的Task/Operator的状态，State数据默认保存在Java的堆内存中。
+	* Checkpoint:表示了一个Flink Job在一个特定时刻的一份全局状态快照。
+		即包含了所有Task/Operator的状态可以理解为Checkpoint是把State数据定时持久化存储了。
+
+	Flink中有两种基本类型的State,
+	- Keyed State
+	- Operator State
+	可以以两种形式存在： 原始状态 和 托管状态
+	托管状态：是由Flink框架管理的状态，如ValueState, ListState, MapState等。	
+	原始状态，由用户自行管理状态具体的数据结构，框架在做checkpoint的时候，使用byte[]来读写状态内容，对其内部数据结构一无所知。
+	#### 4.3.2 Flink的CheckPoint
+	Checkpoint是Flink容错的核心机制，它可以定期地将各个Operator处理的数据进行快照存储（ Snapshot ）。
+	如果Flink程序出现宕机，可以重新从这些快照中恢复数据。
+	数据栅栏（barrier），数据流严格有序 ，每一个 barrier 都带有快照 ID，并且 barrier 之前的数据都进入了此快照
+	Checkpoint持久化存储可以使用如下三种:
+		MemoryStateBackend
+		FsStateBackend
+		RocksDBStateBackend
+		
+	**设置CheckPoint的代码如下：**
+	``` scala
+		val env = StreamExecutionEnvironment.getExecutionEnvironment
+		// start a checkpoint every 1000 ms
+		env.enableCheckpointing(1000)
+		// advanced options:
+		// 设置checkpoint的执行模式，最多执行一次或者至少执行一次
+		env.getCheckpointConfig.setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE)
+		// 设置checkpoint的超时时间
+		env.getCheckpointConfig.setCheckpointTimeout(60000)
+		// 如果在制作快照过程中出现错误，是否让整体任务失败：true是  false不是
+		env.getCheckpointConfig.setFailOnCheckpointingErrors(false)
+		//设置同一时间有多少个checkpoint可以同时执行
+		env.getCheckpointConfig.setMaxConcurrentCheckpoints(1)
+	```
+
+	#### 4.3.3 Flink SQL开发
+	Table API& SQL 是流处理和批处理统一的API层:
+		flink在runtime层是统一的，因为flink将批任务看做流的一种特例来执行
+		在API层，flink为批和流提供了两套API（DataSet和DataStream）
+		Table API & SQL就统一了flink的API层，批数据上的查询会随着输入数据的结束而结束并生成DataSet，流数据的
+		查询会一直运行并生成结果流。
+		Table API & SQL做到了批与流上的查询具有同样的语法语义，因此不用改代码就能同时在批和流上执行。
+
+	1.首先需要获取SQL的执行环境：两种方式（batch和streaming）：
+	```
+		// 批处理:
+		val bEnv = ExecutionEnvironment.getExecutionEnvironment
+		// 创建TableEnvironment，在批处理中
+		val bTableEnv = TableEnvironment.getTableEnvironment(bEnv)
+		// 流处理:
+		val sEnv = StreamExecutionEnvironment.getExecutionEnvironment
+		// 创建TableEnvironment，在流处理中
+		val sTableEnv = TableEnvironment.getTableEnvironment(sEnv)
+	```
+	2.创建TableSource、注册表、创建注册TableSink
+
+		// 1. 创建TableSource
+		val csvSource: TableSource = CsvTableSource.builder().path("./data/score.csv")...
+		// 2. 注册表 "CsvTable"
+		tableEnv.registerTableSource("CsvTable", csvSource)            
+		// 3.注册一个TableSink
+		val csvSink: TableSink = new CsvTableSink("/path/to/file", ...)
+		// 4.定义sink的字段和类型
+		val fieldNames: Array[String] = Array("a", "b", "c")
+		val fieldTypes: Array[TypeInformation[_]] = Array(Types.INT, Types.STRING, Types.LONG)
+		// 5.注册TableSink "CsvSinkTable"
+		tableEnv.registerTableSink("CsvSinkTable", fieldNames, fieldTypes, csvSink)
+		
+	3.Table和DataStream/DataSet的集成    
+		1.将DataStream或DataSet转换为Table
+		tableEnv.registerDataStream("myTable", stream)
+		2.将Table转换为DataStream或DataSet
+		val dsRow: DataStream[Row] = tableEnv.toAppendStream[Row](table)
+		val retractStream: DataStream[(Boolean, Row)] = tableEnv.toRetractStream[Row](table)
+
+	（参考讲义）
+	3.批处理案例
+		1.使用Flink SQL统计用户消费订单的总金额、最大金额、最小金额、订单总数
+		2.读取CSV文件,以table api的方式查询 name 为 张三 的数据
+	4.流处理案例
+		使用Flink SQL来统计5秒内 用户的 订单总数、订单的最大金额、订单的最小金额
+
+
+
+
+
+
+
+
+
+
+
+

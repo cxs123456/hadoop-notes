@@ -1,0 +1,371 @@
+## 1.HBase 介绍
+	
+	### 1.HBase是什么，应用场景
+	**HBase是建立在HDFS之上，列存储nosql的数据库。**
+	Hbase强依赖于HDFS以及zookeeper
+	**HBase特点：**
+	1. 列式存储。
+	2. 通过行键（row key）和行键的range来检索数据。
+	3. 使用行、列、列族和单元格。
+	4. 仅支持单行事务。
+	5. Hbase中支持的数据类型：byte[]
+	6. 数据库以region的形式存在
+	7. 使用WAL（Write-Ahead Logs）存储日志
+	9. 支持分片(分区)
+	**应用场景：海量数据的实时查询 **
+	
+	### 2.HBase的存储架构、原理
+	**HBase由1个 HMaster 、多个 HRegionServer 组成、Zookeeper、Client组成。 **
+	**1.HMaster 主节点 **
+	功能：
+	1) 监控RegionServer
+	2) 处理RegionServer故障转移
+	3) 维护表和元数据
+	4) 处理region的分配或移除
+	5) 进行数据的负载均衡
+	6) 通过Zookeeper发布自己的位置给客户端
+	
+	**2.HRegionServer 从节点 **
+	功能：
+	1) 负责存储HBase的实际数据
+	2) 处理分配给它的Region
+	3) 刷新缓存到HDFS
+	4) 维护HLog
+	5) 执行压缩
+	6) 负责处理Region分片
+	**HRegionServer组件说明：**
+	1) HLog：hbase当中预写日志模块，Write-Ahead logs，类似mysql中的binlog,用来容灾恢复
+	2) HRegion：hbase表的分片，HBase表会根据RowKey值被切分成不同的region存储在RegionServer中
+	3) Store：1个Store对应HBase表中的1个列族，HFile存储在Store中。
+	4) MemStore：位于内存中，用来保存当前的数据操作，当数据保存在HLog中之后，RegsionServer会在内存中存储键值对。
+	5) HFile：hbase数据的实际物理存储文件，StoreFile以HFile格式保存在HDFS上。
+	**组件关系：**
+	1个HRegionServer = 1个HLog  +  多个HRegion
+	1个HRegion  = 多个Store模块
+	1个Store模块 =  1个MemStore + 多个StoreFile
+	1个StoreFile = 1个HFile
+	
+	**3.STORE FILE & HFILE结构 **
+	StoreFile以HFile格式保存在HDFS上，HFile文件是不定长的，长度固定的只有其中的两块：Trailer和FileInfo
+	**HFile分为6个部分：**
+	①Data Block：保存表中的数据，这部分可以被压缩。
+	②Meta Block：保存用户自定义的kv对，可以被压缩。
+	③Data Block Index：Data Block的索引。
+	④Meta Block Index：Meta Block的索引。
+	⑤File Info：Hfile的元信息，不被压缩。
+	⑥Trailer：保存了每一段的偏移量，读取一个HFile时，会首先 读取Trailer，Trailer保存了每个段的起始位置。
+	
+	**4.HBase的表模型 **
+	rowKey：行键，检索记录的主键，最大长度是64KB，按字典顺序，行键必须用0作左填充。
+	columnFamily：列族，列族下面可以有很多列，列族必须作为表模式(schema)定义的一部分预先给出。
+	column：列，每一个列都必须归属于某一个列族，以列族作为前缀，可动态添加。
+	timestamp：时间戳，每条数据都会有时间戳的概念，hbase自动生成
+	versionNum：版本号，每条数据都会有版本号，每次数据变化，版本号都会进行更新，hbase自动生成
+	
+	hbase提供了两种数据版本回收方式：数量和时间
+	- 保存数据的最后n个版本
+	- 保存最近一段时间内的版本（设置数据的生命周期TTL）。
+	
+	**4.HBase的读写过程 **
+	1. 读请求过程：
+	首先Client访问zookeeper获取meta表所在的位置信息(HRegionServer地址)，通过获取的位置信息访问HRegionServer，
+	进而获取到Meta表中存放的元数据，然后扫描所在HRegionServer的Memstore和Storefile来查询数据。
+	2. 写请求过程：
+	首先Client访问zookeeper获取meta表所在的位置信息(HRegionServer地址)。
+	Client向该HRegionServer服务器发起写入数据请求，然后HRegionServer收到请求并响应。
+	Client先把数据写入到HLog，以防止数据丢失，然后将数据写入到Memstore。
+	如果HLog和Memstore均写入成功，则这条数据写入成功。
+	如果Memstore达到阈值，会把Memstore中的数据flush到Storefile中。
+	当Storefile越来越多，会触发Compact合并操作，把过多的Storefile合并成一个大的HFile。
+	当HFile越来越大，Region也会越来越大，达到阈值后，会触发Split操作，将Region一分为二。
+
+	**5.HBase 3个重要机制**
+	1. flush机制(参考讲义)：把Memstore中的数据flush到Storefile中。
+	2. compact机制：把小的storeFile文件合并成大的Storefile文件。
+	3. split机制：当Region达到阈值，会把过大的Region一分为二。默认一个HFile达到10Gb的时候就会进行切分
+
+	
+## 2.HBase 安装
+
+	**注意事项：Hbase强依赖于HDFS以及zookeeper，所以安装Hbase之前一定要保证Hadoop和zookeeper正常启动 **
+	### 1.HBase的集群环境搭建
+	集群规划：主节点(node02)，从节点(node01、node02、node03)
+	①下载并解压HBase的安装包
+	tar -zxvf hbase-2.0.0-bin.tar.gz -C /export/servers/
+	②修改3个配置文件，创建1个配置文件
+		修改(hbase-env.sh、hbase-site.xml、regionservers)，创建(back-masters)
+	```
+	# 1.修改 hbase-env.sh
+	cd /export/servers/hbase-2.0.0/conf
+	vim hbase-env.sh
+	export JAVA_HOME=/export/servers/jdk1.8.0_141
+	export HBASE_MANAGES_ZK=false
+	# 2.修改 hbase-site.xml(参考讲义)
+	vim hbase-site.xml
+	# 3.修改 regionservers
+	vim regionservers
+	node01
+	node02
+	node03
+	# 4.创建 back-masters配置文件，实现HMaster的高可用
+	vim backup-masters
+	node02
+	```
+	③安装包分发到其他机器
+	cd /export/servers/
+	scp -r hbase-2.0.0/ node02:$PWD
+	scp -r hbase-2.0.0/ node03:$PWD
+	④3台机器创建软连接
+	因为hbase需要读取hadoop的core-site.xml以及hdfs-site.xml当中的配置文件信息，所以我们三台机器都要执行以下命令创建软连接
+	ln -s /export/servers/hadoop-2.7.5/etc/hadoop/core-site.xml /export/servers/hbase-2.0.0/conf/core-site.xml
+	ln -s /export/servers/hadoop-2.7.5/etc/hadoop/hdfs-site.xml /export/servers/hbase-2.0.0/conf/hdfs-site.xml
+	⑤添加HBASE_HOME的环境变量
+	vim /etc/profile
+	export HBASE_HOME=/export/servers/hbase-2.0.0
+	export PATH=:$HBASE_HOME/bin:$PATH
+	⑥HBase集群启动
+	cd /export/servers/hbase-2.0.0
+	bin/start-hbase.sh
+
+## 3.HBase 使用(详细参考讲义)
+	
+	**重点学习：create put get scan delete alter**
+	
+	### 1.HBase常用shell操作
+	①进入HBase的shell客户端  bin/hbase shell
+	②查看帮助命令  help
+	③查看当前数据库中有哪些表  list
+	④创建表、表添加数据  create put
+	```
+	# 1.创建user表，包含info、data两个列族
+	方式1：create 'user', 'info', 'data'
+	方式2：create 'user', {NAME => 'info', VERSIONS => '3'}，{NAME => 'data'}
+	# 2.向user表中插入信息，row key为rk0001，列族info中添加name列标示符，值为zhangsan
+	put 'user', 'rk0001', 'info:name', 'zhangsan'
+	# 向user表中插入信息，row key为rk0001，列族info中添加gender列标示符，值为female
+	put 'user', 'rk0001', 'info:gender', 'female'
+	```
+	⑤查询数据操作  get scan
+	```
+	# 1.通过rowkey进行查询行，查看rowkey下面的某个列族的信息，查看列族指定字段的信息，多个列族的信息
+	get 'user', 'rk0001'
+	get 'user', 'rk0001', 'info'
+	get 'user', 'rk0001', 'info:name', 'info:age'
+	get 'user', 'rk0001', 'info', 'data' 
+	或者 get 'user', 'rk0001', {COLUMN => ['info', 'data']} 
+	或者 get 'user', 'rk0001', {COLUMN => ['info:name', 'data:pic']}
+	# 2.查询表中的所有信息、多列族查询、指定列族与某个列名查询
+	scan 'user'
+	scan 'user', {COLUMNS => ['info', 'data']}
+	scan 'user', {COLUMNS => 'info:name'}
+	# 3.指定多个列族与按照数据值模糊查询
+	# 查询user表中列族为info和data且列标示符中含有a字符的信息
+	scan 'user', {COLUMNS => ['info', 'data'], FILTER => "(QualifierFilter(=,'substring:a'))"}
+	# 4.表的rowkey的范围值查询
+	# 查询user表中列族为info，rk范围是[rk0001, rk0003)的数据
+	scan 'user', {COLUMNS => 'info', STARTROW => 'rk0001', ENDROW => 'rk0003'}
+	# 5.指定rowkey模糊查询
+	# 查询user表中row key以rk字符开头的
+	scan 'user',{FILTER=>"PrefixFilter('rk')"}
+	# 查询user表中指定范围的数据，时间范围
+	scan 'user', {TIMERANGE => [1392368783980, 1392380169184]}
+	```
+	⑥更新数据操作
+	**更新操作同插入操作一模一样，只不过有数据就更新，没数据就添加 **
+	```
+	# 1.更新版本号 alter
+	# 将user表的f1列族版本号改为5
+	alter 'user', NAME => 'info', VERSIONS => 5
+	```
+	⑦删除数据以及删除表操作  delete deleteall
+	```
+	# 1.删除行数据 delete 命令可以从表中删除1个单元格或一个行集，命令不能跨列族操作，delete 命令的最小粒度是单元格（Cell）
+	# 删除指定rowkey的列族、列、单元格
+	delete 'user', 'rk0001', 'info'  #删除列族的所有数据
+	delete 'user', 'rk0001', 'info:name'  #删除列
+	delete 'user', 'rk0001', 'info:name', 1392383705316  #删除单元格
+	# 删除一行中所有单元格  deleteall
+	deleteall 'user', 'rk0001'
+	# 2.删除表的列簇，就是修改表结构 alter
+	alter 'user', NAME => 'info', METHOD => 'delete' 或 alter 'user', 'delete' => 'info'
+	# 3.清空表数据 truncate
+	truncate 'user'
+	# 4.删除表 disable drop 
+	# 首先需要先让该表为disable状态，然后才能drop这个表
+	disable 'user'
+	drop 'user'
+	```
+	⑧ 统计表有多少行数据
+	count 'user'
+	
+	### 2.HBase的高级shell管理命令
+	(以下命令详细参考讲义)
+	status whoami list count describe exists is_enabled/is_disabled alter disable/enable drop truncate
+	 
+	### 3.HBase的java代码开发(详细参考讲义和代码工程)
+	#### 3.1 开发大致过程：**
+	POM文件引入hbase-client、hbase-server依赖
+	①创建配置对象Configuration，通过HBaseConfiguration.create()
+	②获取连接对象Connection，通过ConnectionFactory.createConnection(configuration)
+	③获取Admin对象，通过connection.getAdmin();
+	④定义HTableDescriptor对象，添加列族、创建表admin.createTable(hTableDescriptor)
+	⑤获取Table对象，通过connection.getTable(TableName.valueOf("myuser"))，来操作表（增删改查）
+	⑤最后admin.close();
+	
+	#### 3.2 过滤器查询
+	过滤器的类型很多，但是可以分为两大类：比较过滤器、专用过滤器。
+	过滤器的作用是在服务端判断数据是否满足条件，然后只将满足条件的数据返回给客户端；
+	**1.比较过滤器：**
+	rowKey过滤器RowFilter、列族过滤器FamilyFilter、列过滤器QualifierFilter、列值过滤器ValueFilter
+	**2.专用过滤器：**
+	单列值过滤器 SingleColumnValueFilter、列值排除过滤器SingleColumnValueExcludeFilter、rowkey前缀过滤器PrefixFilter
+	分页过滤器PageFilter（重点）
+	多过滤器综合查询FilterList
+	
+	### 4.HBase与MapReduce的集成(详细参考讲义和代码工程)
+	注意：我们可以使用TableMapper与TableReducer来实现从HBase当中读取与写入数据
+	需求一：读取myuser这张表当中的数据写入到HBase的另外一张表中
+	需求二：读取HDFS文件，写入到HBase表当中去
+	需求三：通过bulkload的方式批量加载数据到HBase当中去
+	需求：将我们hdfs上面的这个路径/hbase/input/user.txt的数据文件，转换成HFile格式，然后load到myuser2这张表里面去
+	**HBase在HDFS上存储的形式**
+	HBase中每张Table在根目录（/HBase）下用一个文件夹存储，Table名为文件夹名，
+	在Table文件夹下每个Region同样用一个文件夹存储，每个Region文件夹下的每个列
+	族也用文件夹存储，而每个列族下存储的就是一些HFile文件，HFile就是HBase数据
+	在HFDS下存储格式，所以HBase存储文件最终在hdfs上面的表现形式就是HFile，如果
+	我们可以直接将数据转换为HFile的格式，那么我们的HBase就可以直接读取加载HFile格式的文件，就可以直接读取了
+
+	### 5.HBase与Hive整合(详细参考讲义和代码工程)
+	Hive与HBase的数据都是存储在hdfs上面的，一般的我们为了存储磁盘的空间，不会将一份数据存储到多个地方，导致磁盘空间的浪费，
+	我们可以直接将数据存入hbase，然后通过hive整合hbase直接使用sql语句分析hbase里面的数据即可，非常方便
+	需求一：将hive分析结果的数据，保存到HBase当中去
+	需求二：创建hive外部表，映射HBase当中已有的表模型
+	
+	### 6.HBase的预分区
+	1、手动指定预分区、使用16进制算法生成预分区
+	create 'staff','info','partition1',SPLITS => ['1000','2000','3000','4000']
+	create 'staff2','info','partition2',{NUMREGIONS => 15, SPLITALGO => 'HexStringSplit'}
+
+	### 7.HBase的rowKey设计技巧
+	1. 长度原则：一般设计成定长，不要超过16个字节；
+	2. 散列原则：如果rowkey按照时间戳的方式递增，建议将rowkey的高位作为散列字段，由程序随机生成，
+	低位放时间字段，这样将提高数据均衡分布在每个RegionServer，以实现负载均衡的几率，避免热点问题；
+	3. 唯一原则：设计上保证其唯一性，rowkey是按照字典顺序排序存储的，因此，设计rowkey的时候，
+	要充分利用这个排序的特点，将经常读取的数据存储到一块，将最近可能会被访问的数据放到一块。
+	
+	**热点问题：**
+	热点发生在大量的client直接访问集群的一个或极少数个节点（访问可能是读，写或者其他操作）
+	避免热点的方法：
+	1. 加盐：rowkey的前面增加随机数
+	2. 哈希：通过hash算法，将rowkey均匀分散region服务器上
+	3. 反转：反转rowkey的例子以手机号为rowkey，可以将手机号反转后的字符串作为rowkey，这样的就避免了以手机号那样比较固定开头导致热点问题
+
+	### 8.HBase的协处理器(参考讲义和工程代码)
+	**协处理器有两种： observer 和 endpoint **
+	总结：
+	observer 类似于 RDBMS 中的触发器，主要在服务端工作
+	observer 可以实现权限管理、优先级设置、监控、 ddl 控制、二级索引等功能
+	observer 允许集群在正常的客户端操作过程中可以有不同的行为表现
+	
+	endpoint 类似于 RDBMS 中的存储过程，主要在 client 端工作
+	endpoint 可以实现 min、 max、 avg、 sum、 distinct、 group by 等功能
+	endpoint 允许扩展集群的能力，对客户端应用开放新的运算命令
+	
+	**1.Observer  **
+	Hbase2.0.0 版本为例，它提供了三种观察者接口：RegionObserver/WALObserver/MasterObserver
+	协处理器加载方式：静态加载方式（ Static Load） 和动态加载方式 （ Dynamic Load）
+	
+	**2.协处理器Observer应用实战 **（参考代码）
+	**需求：**
+	通过协处理器Observer实现hbase当中一张表插入数据，然后通过协处理器，将数据复制一份保存到另外一张表当中去，
+	但是只取当第一张表当中的部分列数据保存到第二张表当中去。
+	**开发大致过程：***
+	①HBase当中创建2张表proc1和proc2
+	create 'proc1','info'
+	create 'proc2','info'
+	②开发HBase的协处理器
+	MyProcessor类实现RegionObserver,RegionCoprocessor接口
+	③将项目打成jar包，并上传到HDFS上面
+	hdfs dfs -mkdir -p /processor
+	hdfs dfs -put processor.jar /processor
+	④将打好的jar包挂载到proc1表当中去
+	alter 'proc1',METHOD => 'table_att','Coprocessor'=>'hdfs://node01:8020/processor/processor.jar|cn.itcast.hbasemr.demo4.MyProcessor|1001|'
+	⑤proc1表当中添加数据，查看proc2表也被添加数据
+	⑥卸载协处理器
+	disable 'proc1' # 先禁用表
+	alter 'proc1',METHOD=>'table_att_unset',NAME=>'coprocessor$1' # 卸载协处理器
+	enable 'proc1' # 后启用表
+	
+	### 9.HBase调优(重点：参考讲义里面说明的各种优化)
+
+
+## 4.Hbase实战之新浪微博(详细参考讲义)
+
+	### 1.Hbase的 namespace 介绍
+	在HBase中，namespace命名空间指对一组表的逻辑分组，类似RDBMS中的database，方便对表在业务上划分。
+	HBase全局管理员能够创建、改动和回收namespace的授权
+	**namespace的基本操作：注意下划线_**
+	```
+	// 1.创建namespace
+	create_namespace 'nametest'
+	// 2.查看namespace
+	describe_namespace 'nametest'
+	// 3.列出所有namespace
+	list_namespace
+	// 4.在namespace下创建表
+	create 'nametest:testtable', 'fm1'
+	// 5.查看namespace下的表
+	list_namespace_tables 'nametest'
+	// 6.删除namespace
+	drop_namespace 'nametest'
+	```
+	
+	### 2.Hbase的数据版本的确界以及TTL
+	**1、数据的确界 **
+	在Hbase当中，我们可以为数据设置上界和下界，其实就是定义数据的历史版本保留多少个，
+	通过自定义历史版本保存的数量，我们可以实现历史多个版本的数据的查询。
+	**版本的下界：**
+	**版本的上界：**
+	**2、数据的TTL（Time  To  Live） **
+	在实际工作当中经常会遇到有些数据过了一段时间我们可能就不需要了，那么这时候我们可以使用定时任务去定时的删除这些数据，
+	或者我们也可以使用Hbase的TTL（Time  To  Live）功能，让我们的数据定期的会进行清除
+
+	### 3.hbase微博实战案例(详细参考讲义和工程代码)
+	**1.需求分析 **
+	1) 微博内容的浏览，数据库表设计
+	2) 用户社交体现：关注用户，取关用户
+	3) 拉取关注的人的微博内容
+	
+	**2.代码设计总览：**
+	1) 创建命名空间以及表名的定义
+	2) 创建微博内容表
+	3) 创建用户关系表
+	4) 创建用户微博内容接收邮件表
+	5) 发布微博内容
+	6) 添加关注用户
+	7) 移除（取关）用户
+	8) 获取关注的人的微博内容
+
+	HBase微博开发总结：创建用户关系表动态添加列(列名和列值单元格都是UID)，用户微博内容接收邮件表(利用多版本和时间戳的特性)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+

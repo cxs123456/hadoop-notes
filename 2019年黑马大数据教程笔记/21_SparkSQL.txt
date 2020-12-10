@@ -1,0 +1,165 @@
+## 1.SparkSQL 介绍
+	**课程目标：**
+	- SparkSQL 是什么
+	- SparkSQL 如何使用
+
+	### 1.1 SparkSQL 是什么、适用场景
+	SparkSQL 是一个即支持 SQL 又支持命令式数据处理的工具
+	SparkSQL 的主要适用场景是处理结构化数据
+
+	> **总结：**
+	Spark 的 RDD 主要用于处理 非结构化数据 和 半结构化数据
+	SparkSQL 主要用于处理 结构化数据
+
+	### 1.2 SparkSQL 使用
+	**1.RDD 版本的 WordCount**
+	``` scala
+		val config = new SparkConf().setAppName("ip_ana").setMaster("local[6]")
+		val sc = new SparkContext(config)
+		sc.textFile("hdfs://node01:8020/dataset/wordcount.txt")
+		  .flatMap(_.split(" "))
+		  .map((_, 1))
+		  .reduceByKey(_ + _)
+		  .collect
+
+	```
+
+	**2.SparkSQL 版本 WordCount**
+	``` scala
+		case class People(name: String, age: Int)
+		
+		// ①SparkSQL 中有一个新的入口点, 叫做 SparkSession
+		val spark: SparkSession = new sql.SparkSession.Builder()
+		  .appName("hello")
+		  .master("local[6]")
+		  .getOrCreate()
+		
+		// 必须要导入隐式转换
+		// 注意: spark 在此处不是包, 而是 SparkSession 对象
+		import spark.implicits._
+
+		val peopleRDD: RDD[People] = spark.sparkContext.parallelize(Seq(People("zhangsan", 9), People("lisi", 15)))
+		// ②SparkSQL 中有一个新的类型叫做 Dataset
+		val peopleDS: Dataset[People] = peopleRDD.toDS()
+		// 方式1 命令式 API
+		// val teenagers: Dataset[String] = peopleDS.where('age > 10)     
+		//   .where('age < 20)
+		//   .select('name)
+		//   .as[String]
+		
+		// 方式2 SQL API
+		// ③使用SQL方式需要注册一张临时表
+		peopleDS.createOrReplaceTempView("people")
+		// ④直接使用sql语句
+		val teenagers: DataFrame = spark.sql("select name from people where age > 10 and age < 20")
+
+		/*
+		+----+
+		|name|
+		+----+
+		|lisi|
+		+----+
+		 */
+		teenagers.show()
+	```
+	> **总结：**
+	1.SparkSQL 中有一个新的入口点, 叫做 SparkSession。
+	2.SparkSQL 提供了 SQL API 和 "命令式" API 两种不同的访问结构化数据的形式。
+	3.命令式 API 由一个叫做 Dataset 的组件提供, 其还有一个变形, 叫做 DataFrame。
+
+	**3.Catalyst 优化器**
+	SparkSQL 使用了一个新的 SQL 优化器替代 Hive 中的优化器，这个优化器就是Catalyst。
+	**Catalyst优化器运作原理分为3步：**
+	1. 先对 SQL 或者 Dataset 的代码解析生成 AST (抽象语法树), 又称逻辑计划。
+	2. 后对逻辑计划进行优化, 再生成物理计划。
+	3. 最后生成代码到集群中以 RDD 的形式运行。
+
+	### 1.3 Dataset 和 DataFrame 
+	- 理解 Dataset 是什么
+	- 理解 DataFrame 是什么
+	- 理解 DataFrame 的常见操作
+	- 理解 Dataset 和 DataFrame 之间的关系
+
+	**1.Dataset 是什么**
+	Dataset 是一个强类型, 并且类型安全的数据容器, 并且提供了结构化查询 API 和类似 RDD 一样的命令式 API，底层还是RDD。
+
+	**2.DataFrame 是什么**
+	**DataFrame 是 SparkSQL 中一个表示关系型数据库中 "表" 的函数式抽象。**
+	作用：是让 Spark 处理大规模结构化数据的时候更加容易。
+	DataFrame 可以处理结构化的数据, 或者是半结构化的数据, 因为这两类数据中都可以获取到 Schema 信息. 也就是说 DataFrame 中有 Schema 信息, 
+	可以像操作表一样操作 DataFrame。
+
+	**3.DataFrame 由两部分构成：**
+	1. row 的集合, 每个 row 对象表示一个行。
+	2. 描述 DataFrame 结构的 Schema。
+
+	> **总结：**
+	1.DataFrame 是一个类似于关系型数据库表的函数式组件
+	2.DataFrame 一般处理结构化数据和半结构化数据
+	3.DataFrame 具有数据对象的 Schema 信息
+	4.**DataFrame 就是 Dataset[Row]，也都支持 API 和 SQL 两种操作方式**
+	5.DataFrame 可以由一个已经存在的集合直接创建, 也可以读取外部的数据源来创建
+	6.DataFrame 中的数据表示为 Row, 是一个行的概念
+
+	### 1.4 数据读写
+	#### 1.4.1 DataFrameReader和DataFrameWriter
+	SparkSQL 中专门用于读取外部数据源框架, 叫做 DataFrameReader, 用于数据写入框架, 叫做 DataFrameWriter
+
+	读写 Parquet 格式文件（可以分区）
+	读写 JSON 格式文件（ JSON Line 文件）
+	SparkSQL 整合 Hive（可以分区）       
+	SparkSQL 整合JDBC访问 MySQL
+	> **总结：**
+	DataFrameReader 有三个组件 format, schema, option
+	DataFrameReader 有两种使用方式, 一种是使用 load 加 format 指定格式, 还有一种是使用封装方法 csv, json 等
+	DataFrameWriter 中也有 format, options, 另外 schema 是包含在 DataFrame 中的
+	DataFrameWriter 中还有一个很重要的概念叫做 mode, 指定写入模式, 如果目标集合已经存在时的行为
+	DataFrameWriter 可以将数据保存到 Hive 表中, 所以也可以指定分区和分桶信息
+
+	### 1.5 Dataset (DataFrame) 的基础操作 
+	①有类型转换操作：转换(flatMap map mapPartitions transform as) 过滤(filter) 聚合(groupByKey) 切分(randomSplit sample) 
+		排序(orderBy sort) 分区(coalesce repartitions) 去重(dropDuplicates distinct) 集合操作(except intersect union limit)
+	②有类型转换操作：选择(select selectExpr withColumn withColumnRenamed) 剪除(drop) 聚合(groupBy)
+	③Column 对象：创建('单引号 $美元符 col column ) 别名和转换(as[Type] as(name)) 添加列(withColumn) 操作(like isin sort)
+	④省缺值处理：
+		处理 null 和 NaN：丢弃（df.na.drop()）填充（df.na.fill(0)）
+		处理 "Null", "NA", " "：
+		处理异常字符串：
+			使用函数直接转换非法的字符串 
+			使用 where 直接过滤 
+			使用 DataFrameNaFunctions 替换, 但是这种方式被替换的值和新值必须是同类型
+	⑤聚合操作和多维聚合：groupBy rollup cube pivot RelationalGroupedDataset
+	⑥连接操作
+		无类型连接 join
+		连接类型 Join Types ：cross交叉连接、full全外连接、inner内连接、left左连接、right右连接
+	⑦窗口函数：窗口规则+窗口函数
+	对n条结果集通过窗口规则(分区排序)生成多个窗口之后，每个窗口中每条数据通过窗口函数产生1个结果，最终结果集还是N条不变
+	``` scala
+		// 理解窗口操作的语义, 掌握窗口函数的使用
+		// 方式一: SQL 语句，窗口函数在 SQL 中的完整语法如下
+		function OVER (PARITION BY ... ORDER BY ... FRAME_TYPE BETWEEN ... AND ...)
+		//方式二: 使用 DataFrame 的命令式 API
+		val window: WindowSpec = Window.partitionBy('category)
+		  .orderBy('revenue.desc)
+		source.select('product, 'category, 'revenue, dense_rank() over window as "rank")
+		  .where('rank <= 2)
+		  
+		// * WindowSpec : 窗口的描述符, 描述窗口应该是怎么样的
+		// * dense_rank() over window : 表示一个叫做 dense_rank() 的函数作用于每一个窗口
+		// 从语法的角度上讲, 窗口函数大致分为两个部分
+		dense_rank() OVER (PARTITION BY category ORDER BY revenue DESC) as rank
+		// * 窗口函数部分 dense_rank()
+		// * 窗口规则定义部分 PARTITION BY category ORDER BY revenue DESC
+	```
+	> **总结：**
+	窗口函数和 GroupBy 最大的区别, 就是 GroupBy 的聚合对每一个组只有一个结果, 而窗口函数可以对每一条数据都有一个结果
+	窗口操作分为两个部分
+		* 窗口定义, 定义时可以指定 Partition, Order, Frame
+		* 函数操作, 可以使用三大类函数, 排名函数, 分析函数, 聚合函数
+
+---
+## 2.SparkSQL 练习项目 - 出租车利用率分析
+以后复习看下
+
+
+

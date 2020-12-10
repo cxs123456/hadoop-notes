@@ -1,0 +1,359 @@
+## 1. 数据仓库概述
+
+	### 1.基本概念
+	数据仓库(Data Warehouse，简写为DW)，目的是构建面向分析的集成化数据环境，为企业提供决策支持。
+	可以理解为：面向分析的存储系统，为企业提供决策支持
+	
+	### 2.主要特点
+	数据仓库是面向主题的（Subject-Oriented ）、集成的（Integrated）、非易失的（NonVolatile）和时变的（Time-Variant ）数据集合，用以支持管理决策。
+	
+	数据仓库有4个特征：面向主题、集成性、非易失性、时变性
+	1. 面向主题，主题理解为各个业务系统的主要数据(如：用户、订单、商品等)
+		主题（Subject）是将企业信息系统中的数据进行综合、归类和分析利用的一个抽象概念，每一个主题基本对应一个宏观的分析领域。
+		在逻辑意义上，它是对应企业中某一宏观分析领域所涉及的分析对象(如：用户、订单、商品等)。
+		例如“销售分析”就是一个分析领域，因此这个数据仓库应用的主题就是“销售分析”。
+	2. 集成性，将不同源数据库中的数据汇总到一起，在数据进入数据仓库之前，必然要经过统一与整合，如ETL
+	3. 非易失性，一般仅执行查询操作，很少会有删除和更新，但是需定期加载和刷新数据。
+	4. 时变性，数据仓库包含各种粒度的历史数据，根据业务需要定时更新，以适应决策的需要
+	
+	### 3.数据库与数据仓库的区别
+	**数据库与数据仓库的区别，实际就是 OLTP 与 OLAP 的区别。 **
+	操作型处理，叫联机事务处理 OLTP（On-Line Transaction Processing），针对具体业务的数据进行增删改查操作。
+	分析型处理，叫联机分析处理 OLAP（On-Line Analytical Processing），针对某些主题的历史数据进行查询分析，支持管理决策。
+	**区别点： **
+	1. 数据库是面向事务的设计，数据仓库是面向主题设计的
+	2. 数据库存储业务数据，数据仓库存储历史数据
+	3. 数据库是为捕获数据而设计，数据仓库是为分析数据而设计
+	4. 数据库针对业务数据进行增删改查，数据仓库针对某些主题的历史数据进行多维的查询分析，支持管理决策
+	
+	### 4.数据仓库的分层架构
+	按照数据流入流出的过程，数据仓库架构可分为 3 层**(源数据、数据仓库、数据应用) **
+	
+	① 源数据层（ODS）:此层数据无任何更改，直接沿用外围业务系统的数据结构和数据，不对外开放；
+		为临时存储层，是接口数据的临时存储区域，为后一步的数据处理做准备。
+	② 数据仓库层（DW）：DW层的数据应该是一致的、准确的、干净的数据，即对源系统数据进行了清洗后的数据
+	③ 数据应用层（DA或APP）或者数据集市(DataMart，DM)：前端应用直接读取的数据源；根据报表、专题分析需求而计算生成的数据。
+	
+	ETL（抽取Extra, 转化Transfer, 装载Load）：数据仓库从各数据源获取数据及在数据仓库内的数据转换和流动
+	**数据仓库为什么要分层？ **
+	1. 通过数据分层管理可以简化数据清洗的过程
+	2. 用空间换时间，通过大量的预处理来提升应用系统的用户体验
+	3. 不分层的话，如果源业务系统的业务规则发生变化将会影响整个数据清洗过程，工作量巨大
+	
+	### 5.数据仓库的元数据管理
+	元数据（Meta Date），主要记录数据仓库中模型的定义、各层级间的映射关系、监控数据仓库的数据状态及ETL的任务运行状态。
+	目的是使数据仓库的设计、部署、操作和管理能达成协同和一致。
+	
+	
+## 2. Hive 的概述
+	
+	### 1. Hive是什么（Hive英文 蜂巢）
+	**Hive是基于Hadoop的一个数据仓库系统，可以将结构化的数据文件映射为一张数据库表，并提供类SQL查询功能。 **
+	**本质是将SQL转换为MapReduce的任务进行运算，底层由HDFS来提供数据的存储 。**
+	
+	**为什么使用Hive **
+	1. 采用类SQL语法去操作数据，提供快速开发的能力。
+	2. 避免了去写MapReduce，减少开发人员的学习成本。
+	3. 功能扩展很方便。
+	
+	### 2. HIve应用场景
+	hive用于海量数据的离线分析
+	
+## 3. Hive 的安装
+	
+	### 1. Hive的架构
+	1. 用户接口：包括CLI、JDBC/ODBC、WebGUI。其中，CLI(command line interface)为shell命令行；
+	JDBC/ODBC是Hive的JAVA实现，与传统数据库JDBC类似；WebGUI是通过浏览器访问Hive。
+	2. 元数据存储：通常是存储在关系数据库如mysql/derby中。
+	3. 解释器、编译器、优化器、执行器: 完成HQL 查询语句从词法分析、语法分析、编译、优化以及查询计划的生成。
+	
+	** Hive与Hadoop的关系
+	Hive使用HDFS存储数据，使用MapReduce查询分析数据
+	
+	### 2. Hive的安装部署①②③④⑤
+	```
+	① 上传并解压安装包
+	cd /export/softwares/
+	tar -zxvf apache-hive-2.1.1-bin.tar.gz -C ../servers/
+	
+	② 安装MySql
+	
+	③ 修改hive的配置文件 hive-env.sh、hive-site.xml
+	# 修改hive-env.sh
+	cd /export/servers/apache-hive-2.1.1-bin/conf
+	cp hive-env.sh.template hive-env.sh  # 复制配置文件模板
+	vi hive-env.sh  # 设置Hadoop路径
+	HADOOP_HOME=/export/servers/hadoop-2.7.5 
+	export HIVE_CONF_DIR=/export/servers/apache-hive-2.1.1-bin/conf
+	# 修改hive-site.xml
+	cd /export/servers/apache-hive-2.1.1-bin/conf
+	vim hive-site.xml
+	④ 添加mysql的连接驱动包到hive的lib目录下
+	⑤ 配置hive的环境变量
+	sudo vim /etc/profile
+	export HIVE_HOME=/export/servers/apache-hive-2.1.1-bin
+	export PATH=:$HIVE_HOME/bin:$PATH
+	```
+	
+## 4. Hive 的使用
+
+	### 1.Hive 的交互方式
+	**1.使用bin/hive进入客户端 **
+	```
+	# 进入bin目录，使用hive命令进入CLI客户端
+	cd /export/servers/apache-hive-2.1.1-bin/
+	bin/hive
+	# 创建数据库
+	create database if not exists mytest;
+	```
+	
+	**2.使用sql语句或者sql脚本进行交互 **
+	```
+	# 1.不进入hive的客户端直接执行 hive -e 执行sql语句
+	bin/hive -e "create database if not exists mytest;"
+	
+	# 2.通过hive -f 来执行我们的sql脚本
+	bin/hive -f /export/servers/hive.sql
+	```
+
+	### 2.Hive的基本操作
+	#### 2.1 数据库操作
+	① 创建数据库
+	create database if not exists myhive;
+	use myhive;
+	② 创建数据库并指定位置 location
+	create database myhive2 location '/myhive2';
+	说明：hive的表存放位置模式是由hive-site.xml当中的一个属性指定的
+	<name>hive.metastore.warehouse.dir</name>
+	<value>/user/hive/warehouse</value>
+	③ 设置数据库 键值对信息
+	create database foo with dbproperties ('owner'='itcast','date'='20190120');
+	查看数据库的键值对信息：
+	describe database extended foo; 
+	修改数据库的键值对信息：
+	desc database extended myhive2;
+	④ 查看数据库更多详细信息
+	desc database extended myhive2;
+	⑤  删除数据库
+	删除空数据库:
+	drop database myhive2;
+	强制删除数据库，包含数据库下面的表一起删除
+	drop database myhive cascade;
+	
+	#### 2.2 表操作
+	**1.创建表的语法: **
+	```
+	create [external] table [if not exists] table_name (
+    col_name data_type [comment '字段描述信息']
+    col_name data_type [comment '字段描述信息']
+	) [comment '表的描述信息']
+    [partitioned by (col_name data_type,...)]
+    [clustered by (col_name,col_name,...)]
+    [sorted by (col_name [asc|desc],...) into num_buckets buckets]
+    [row format row_format]
+    [storted as ....]
+    [location '指定表的路径']
+	```
+	**说明： **
+	1. create  table
+		创建一个指定名字的表。如果相同名字的表已经存在，则抛出异常；用户可以用 IF NOT EXISTS 选项来忽略这个异常。
+	2. external
+		可以让用户创建一个外部表，在建表的同时指定一个指向实际数据的路径（LOCATION），Hive 创建内部表时，
+	    会将数据移动到数据仓库指向的路径；若创建外部表，仅记录数据所在的路径，不对数据的位置做任何改变。
+	    在删除表的时候，内部表的元数据和数据会被一起删除，而外部表只删除元数据，不删除数据。
+	3. comment
+	   表示注释,默认不能使用中文 
+	4. partitioned by  
+	    表示使用表分区,一个表可以拥有一个或者多个分区，每一个分区单独存在一个目录下 .
+	5. clustered by
+		对于每一个表分区文件， Hive可以进一步组织成桶，也就是说桶是更为细粒度的数据范围划分。Hive也是 针对某一列进行桶的组织。
+	6. sorted by
+		指定排序字段和排序规则
+	7. row format 
+		指定表文件字段分隔符
+	8. storted as 
+		指定表文件的存储格式,常用格式:SEQUENCEFILE, TEXTFILE, RCFILE,如果文件数据是纯文本，
+		可以使用 STORED AS TEXTFILE。如果数据需要压缩，使用 storted  as SEQUENCEFILE。
+	9. location 
+	    指定表文件的存储路径
+
+    
+	**2.建表、加载数据、分区、分通操作**
+	① 创建表(指定字段的分隔符、指定表文件的存放路径、插入数据)
+	```
+	# 1.指定数据库
+	use myhive;
+	# 2.创建表 指定字段的分隔符 指定表文件的存放路径
+	create table if not exists stu2(id int ,name string) row format delimited
+	fields terminated by '\t' location '/user/stu2';
+	insert into stu values (1,"zhangsan"); #插入数据
+	select * from stu;
+	# 3.根据查询结果创建表
+	create table stu3 as select * from stu2; # 通过复制表结构和表内容创建新表
+	# 4.根据已经存在的表结构创建表
+	create table stu4 like stu;
+	drop table stu4; 删除表
+	# 5.查询表的详细信息
+	desc formatted stu2;
+	```
+	
+	② hive加载数据
+	```
+	# 1.加载本地文件数据到表中  本地local
+	load data local inpath '/export/student.csv' into table student;
+	# 2.加载数据并覆盖已有数据
+	load data local inpath '/export/student.csv' overwrite into table student;
+	# 3.从hdfs文件系统向表中加载数据
+	load data inpath '/hivedatas/techer.csv' into table teacher;
+	## 4.进行表的修复 ( 建立表与数据文件之间的一个关系映射 )
+	msck repair table score4;
+	# 通过查询方式加载数据
+	create table score4 like score;
+	insert overwrite table score4 partition(month = '201806') select s_id,c_id,s_score from score;
+	# 通过复制表结构和表内容创建新表
+	create table stu3 as select * from stu2; 
+	
+	# Hive数据导入到HDFS
+	insert overwrite directory '/score/exporthdfs' row format delimited
+	fields terminated by '\t' STORED AS textfile select s_id,c_id,s_score from score;
+	```
+	
+	③ 分区表的操作
+	```
+	# 1.创建分区表语法 partitioned by
+	create table score(s_id string,c_id string, s_score int) partitioned by
+	(month string) row format delimited fields terminated by '\t';
+	# 2.创建一个表带多个分区
+	create table score2 (s_id string,c_id string, s_score int) partitioned by
+	(year string,month string,day string) row format delimited fields terminated by '\t';
+	# 3.加载数据到分区表中
+	load data local inpath '/export/hivedatas/score.csv' into table
+	score partition (month='201806');
+	# 4.多分区表联合查询(使用 union all )
+	select * from score where month = '201806' union all select * from score where month = '201806';
+	# 5.查看分区
+	show partitions score;
+	# 6.添加分区
+	alter table score add partition(month='201805');
+	# 7.删除分区
+	alter table score drop partition(month='201806');
+	```
+	
+	③ 分桶表操作
+	分桶，就是将数据按照指定的字段进行划分到多个文件当中去，分桶就是MapReduce中的分区 .
+	```
+	# 1.开启 Hive 的分桶功能/设置 Reduce 个数
+	set hive.enforce.bucketing=true;
+	set mapreduce.job.reduces=3;
+	# 2.创建分桶表
+	create table course (c_id string,c_name string,t_id string) clustered by(c_id) 
+	into 3 buckets row format delimited fields terminated by '\t';
+	# 通过insert overwrite给桶表中加载数据
+	```
+	
+	#### 2.3 查询语法
+	**1.Hive查询的SQL语法: **
+	```
+	SELECT [ALL | DISTINCT] select_expr, select_expr, ...
+	FROM table_reference
+	[WHERE where_condition]
+	[ GROUP BY col_list [HAVING condition]]
+	[ CLUSTER BY col_list
+	| [DISTRIBUTE BY col_list] [SORT BY| ORDER BY col_list]
+	]
+	[LIMIT number]
+	```
+	**Hive的SQL语法基本一致并在SQL上做了些扩展 **
+	RLIKE子句是Hive中这个功能的一个扩展，其可以通过Java的正则表达式这个更强大的语言来指定匹配条件
+	查找s_id中含1的数据
+	```
+	select * from score where s_id rlike '[1]'; # like '%1%' 
+	```
+	### 3.Hive的函数
+	#### 3.1 Hive内置函数
+	① 查看系统自带函数
+	hive> show functions;
+	② 显示自带的函数的用法
+	hive> desc function upper;
+	③ 详细显示自带的函数的用法
+	hive> desc function extended upper;
+	④ 常用内置函数
+	```
+	# 字符串连接函数：concat 
+	  select concat('abc','def’,'gh');
+	# 带分隔符字符串连接函数：concat_ws 
+	  select concat_ws(',','abc','def','gh');
+	# 类型转换函数：cast
+	  select cast(1.5 as int);
+	# json 解析函数：get_json_object，用来处理json，必须是json格式)
+	  select get_json_object('{"name":"jack","age":"20"}','$.name');
+	# URL解析函数：parse_url
+	  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'HOST');
+	# explode函数可以将一个array或者map展开，其中
+		explode(array)：使得结果中将array列表里的每个元素生成一行；
+		explode(map)：使得结果中将map里的每一对元素作为一行，key为一列，value为一列，
+		一般情况下，直接使用即可，也可以根据需要结合lateral view 使用
+		select explode(location) from test_message;
+	# lateral view：侧视图,目的是为了配合UDTF来使用,把某1行数据拆分成多行数据.不加lateral view的UDTF只能提取单个字段拆分,
+		并不能塞会原来数据表中.加上lateral view就可以将拆分的单个字段数据与原始表数据关联上.
+	# subview为视图别名,lc为指定新列别名
+		select name,subview.* from test_message lateral view explode(location) subview as lc;
+	```
+	
+	#### 3.2 自定义函数
+	**1.根据用户自定义函数类别分为以下三种：**
+	1. UDF（User-Defined-Function）：一进一出
+	2. UDAF（User-Defined Aggregation Function）：
+	聚集函数，多进一出，类似于： count / max / min
+	3. UDTF（User-Defined Table-Generating Functions）：
+	一进多出，如 lateral view explore()
+	
+	**2.编程步骤：**
+	1. 继承org.apache.hadoop.hive.ql.UDF
+	2. 需要实现 evaluate 函数；evaluate函数支持重载；
+
+	**3.UDF 开发实例**
+	(参考工程代码和讲义)
+	
+	#### 3.3 Hive分析窗口函数(分组函数)
+	语法：
+		row_number() over (partition by xxx order by xxx) rank 
+	rank 为分组的别名，相当于新增一个字段为 rank。
+	partition by 用于分组，比方说依照 sex 字段分组。
+	order by 用于分组内排序，比方说依照 sex 分组后，组内按照 age 排序。
+	排好序之后，为每个分组内每一条分组记录从 1 开始返回一个数字
+	取组内某个数据，可以使用 where 表名.rank>x 之类的语法去取
+	
+	Hive分析窗口函数(1) NTILE,ROW_NUMBER,RANK,DENSE_RANK
+	Hive分析窗口函数(2) SUM,AVG,MIN,MAX
+	Hive分析窗口函数(3) CUME_DIST,PERCENT_RANK
+	Hive分析窗口函数(4) LAG,LEAD,FIRST_VALUE,LAST_VALUE
+	Hive分析窗口函数(5) GROUPING SETS,GROUPING__ID,CUBE,ROLLUP
+	
+## 5. Hive 的优化	
+	### 1.Hive的数据压缩(参考讲义)
+	1. 在实际工作当中，hive当中处理的数据，一般都需要经过压缩，一般使用Snappy压缩格式
+	2. 在mapred-site.xml中配置压缩参数
+	3. 开启Map输出阶段压缩
+	4. 开启Reduce输出阶段压缩
+	
+	### 2.Hive的数据存储格式(参考讲义)
+	**Hive支持的存储的格式主要有4种：**
+	① TEXTFILE（行式存储）
+	② SEQUENCEFILE(行式存储)、
+	③ ORC（列式存储）
+	④ PARQUET（列式存储）
+	二进制方式存储的，所以是不可以直接读取的，文件中包括该文件的数据和元数据，因此Parquet格式文件是自解析的
+
+	### 3.文件存储格式与数据压缩结合
+	**1.存储文件的压缩比总结：**
+	ORC > Parquet > textFile
+	
+	**2.存储文件的查询速度总结：**
+	ORC > TextFile > Parquet
+	
+	**3.存储方式和压缩总结：**
+	在实际的项目开发当中，Hive表的数据存储格式选择：orc或parquet，压缩方式选择：snappy
+	
+	### 4.Hive调优(参考讲义)
+	

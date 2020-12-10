@@ -1,0 +1,126 @@
+## 1.Flume 概述(Flume是什么，应用场景)
+	
+	### 1.Flume是什么、应用场景
+	**Apache Flume是一个高可用的，高可靠的，分布式的海量日志采集、聚合和传输的工具 **
+	**海量日志采集工具**
+	应用场景：海量日志的采集、聚合和传输
+	
+	### 2.Flume系统运行机制、架构组件
+	Flume 系统中核心的角色是 agent，agent 本身是一个 Java 进程，一般运行在日志收集节点。
+	**每一个 agent 相当于一个数据传递员，内部有三个组件：**
+	① Source：采集源，用于跟数据源对接，以获取数据；
+	② Sink：下沉地，采集数据的传送目的，用于往下一级 agent 传递数据或者往最终存储系统传递数据；
+	③ Channel：管道，agent 内部的数据传输通道，用于从 source 将数据传递到 sink;
+	**传输的数据是 event，event 是 Flume 内部数据传输的最基本单元，event将传输的数据进行封装 **
+	一个完整的 event 包括：event headers、 event body、 event 信息，其中event 信息就是 flume 收集到的日记记录。
+	
+
+## 2.Flume 安装
+	### 1.Flume 的安装非常简单，过程如下：
+	① 上传安装包到数据源所在节点上
+	② 解压安装包，修改 conf 下的 flume-env.sh，在里面配置 JAVA_HOME
+	tar -zxvf apache-flume-1.8.0-bin.tar.gz
+	vim conf/flume-env.sh
+	③ 根据数据采集需求配置采集方案，但是内容必须key=value形式
+	④ 指定采集方案配置文件，在相应的节点上启动 flume agent
+	
+	### 2.入门示例-采集方案配置文件
+	① 先在 flume 的 conf 目录下新建一个文件netcat-logger.conf(文件名任意),并编辑文件内容
+	```
+	vi netcat-logger.conf
+	# 定义这个 agent 中各组件的名字
+	a1.sources = r1
+	a1.sinks = k1
+	a1.channels = c1
+	# 描述和配置 source 组件： r1
+	a1.sources.r1.type = netcat
+	a1.sources.r1.bind = localhost
+	a1.sources.r1.port = 44444
+	# 描述和配置 sink 组件： k1
+	a1.sinks.k1.type = logger
+	# 描述和配置 channel 组件，此处使用是内存缓存的方式
+	a1.channels.c1.type = memory
+	a1.channels.c1.capacity = 1000
+	a1.channels.c1.transactionCapacity = 100
+	# 描述和配置 source channel sink 之间的连接关系
+	a1.sources.r1.channels = c1
+	a1.sinks.k1.channel = c1	
+	```
+	② 启动 agent 去采集数据
+	```
+	bin/flume-ng agent -c conf -f conf/netcat-logger.conf -n a1 -Dflume.root.logger=INFO,console
+	-c conf 指定 flume 自身的配置文件所在目录
+	-f conf/netcat-logger.con 指定我们所描述的采集方案
+	-n a1 指定我们这个 agent 的名字
+	```
+	
+## 3.Flume 使用（主要学习如何编写 '采集方案配置文件'）
+	
+	### 1.Flume 简单案例(参考讲义，代码笔记太多，主要记住关键词)
+	#### 1.1 采集目录到 HDFS
+	**采集需求： 服务器的某特定目录下，会不断产生新的文件，每当有新文件出现，就需要把文件采集到 HDFS 中去 **
+	```
+	# 采集源，即 source——监控文件目录
+	a1.sources.r1.type = spooldir 
+	# 指定采集源采集的目录
+	a1.sources.r1.spoolDir = /root/logs
+	下沉目标，即 sink——HDFS 文件系统
+	a1.sinks.k1.type = hdfs
+	```
+	#### 1.2 采集文件到 HDFS
+	** 采集需求： 比如业务系统使用 log4j 生成的日志，日志内容不断增加，需要把追加到日志文件中的数据实时采集到 hdfs **
+	```
+	# 采集源，即 source——监控文件内容更新 : exec ‘ tail -F file’
+	a1.sources.r1.type = exec
+	a1.sources.r1.command = tail -F /root/logs/test.log
+	```
+	
+	### 2.Flume 拦截器实战案例(参考讲义，代码笔记太多，不方便记录)
+	**采集需求：**
+	A、B 两台日志服务机器实时生产日志主要类型为 access.log、 nginx.log、web.log，
+	现在要求把 A、B 机器中的 access.log、nginx.log、web.log 采集汇总到 C 机器上然后统一收集到 hdfs 中。
+	但是在 hdfs 中要求的目录为：
+	/source/logs/access/20160101/**
+	/source/logs/nginx/20160101/**
+	/source/logs/web/20160101/**
+	```
+	# static 拦截器的功能就是往采集到的数据的 header 中插入自己定义的 key-value 对
+	a1.sources.r3.interceptors = i3
+	a1.sources.r3.interceptors.i3.type = static
+	a1.sources.r3.interceptors.i3.key = type
+	a1.sources.r3.interceptors.i3.value = web
+	# 定义 sink 类型 avro
+	a1.sinks.k1.type = avro
+	```
+	
+	**Flume 自定义拦截器 **(参考讲义的java代码)
+	Flume 有各种自带的拦截器，比如： TimestampInterceptor、HostInterceptor、RegexExtractorInterceptor 等，
+	通过使用不同的拦截器，实现不同的功能;
+	编写java类型实现 Interceptor 接口
+	
+	### 3.Flume 高阶自定义组件(参考讲义的代码)
+	①Flume 自定义 Source
+	**Source 是负责接收数据到 Flume Agent 的组件。 Source 组件可以处理各种类型、各种格式的日志数据，包括 avro、
+	thrift、exec、jms、spooling directory、netcat、 sequence generator、 syslog、 http、 legacy。**
+	
+	**需求：**
+	实时监控 MySQL，从 MySQL 中获取数据传输到 HDFS 或者其他存储框架，所以此时需要我们自己实现 MySQ
+	1. 自定义source类需要继承 AbstractSource 类并实现Configurable 和 PollableSource 接口
+	
+	②Flume 自定义 Sink
+	同自定义 source 类似， 对于某些 sink 如果没有我们想要的
+	
+	**需求：**
+	从网络端口当中发送数据，自定义 sink，使用 sink 从网络端口接收数据，然后将数据保存到本地文件当中去。
+	1. 自定义 sink 类需要继承 AbstractSink 类并实现 Configurable
+
+
+
+
+
+
+
+
+
+
+

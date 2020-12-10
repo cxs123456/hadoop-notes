@@ -1,0 +1,106 @@
+## 1.Hadoop的介绍(Hadoop是什么)
+
+	### 1.Hadoop是什么
+	狭义上来说，单独指Hadoop这个软件，包括3个组件：HDFS、MapReduce和Yarn
+	1. HDFS ：分布式文件存储系统
+	2. MapReduce : 分布式的离线并行计算框架
+	3. Yarn ：分布式作业调度与集群资源管理系统
+	Hadoop 是构建大数据分析的基础平台
+	广义上来说，hadoop指代大数据的一个生态圈，包括很多其他的软件
+	
+	### 2.Hadoop历史版本
+	1.x版本系列：hadoop版本当中的第二代开源版本，主要修复0.x版本的一些bug等
+	2.x版本系列：架构产生重大变化，引入了yarn平台等许多新特性
+	3.x版本系列: 加入多namenoode新特性
+	
+	### 3.Hadoop三大发行版公司
+	免费开源版本 Apache、免费开源版本 hortonWorks(HDP)、软件收费版本 Cloudera(CDH)
+	
+## 2.Hadoop的架构模型
+	
+	### 1.HDFS架构概述
+	① NameNode(nn) : 集群当中的主节点，管理文件元数据(文件的大小，文件的位置，文件的权限)，以及每个文件的块列表和块所在的DataNode
+	② DataNode(dn) : 集群当中的从节点，主要用于存储文件块数据，以及块数据的校验和
+	③ Secondary NameNode(2nn) : 用来监控HDFS状态的辅助后台程序，每隔一段时间获取HDFS元数据的快照
+	
+	### 2.MapReduce架构概述
+	MapReduce将计算过程分为两个阶段：Map和Reduce
+	1）Map阶段并行处理输入数据
+	2）Reduce阶段对Map结果进行汇总
+	组件有：
+	① JobTracker：接收用户的计算请求任务，并分配任务给从节点
+	② TaskTracker：负责执行主节点JobTracker分配的任务
+	
+	### 3.Yarn架构概述
+	① ResourceManager(rm) : 处理客户端请求、启动/监控ApplicationMaster、监控NodeManager、资源分配与调度；
+	② NodeManager(nm) : 单个节点上的资源管理、处理来自ResourceManager的命令、处理来自ApplicationMaster的命令；
+	③ ApplicationMaster : 数据切分、为应用程序申请资源，并分配给内部任务、任务监控与容错。
+	④ Container : 对任务运行环境的抽象，封装了CPU、内存等多维资源以及环境变量、启动命令等任务运行相关的信息。
+
+
+## 3.Hadoop集群安装、配置部署
+	### 1.集群规划和安装配置
+	| 服务器IP          | 192.168.174.100 | 192.168.174.110 | 192.168.174.120 |
+	| ----------------- | --------------- | --------------- | --------------- |
+	| 主机名           		  | node01          | node02          | node03          |
+	| NameNode          | 是              | 否              | 否              |
+	| SecondaryNameNode | 是              | 否              | 否              |
+	| dataNode          | 是              | 是              | 是              |
+	| ResourceManager   | 是              | 否              | 否              |
+	| NodeManager       | 是              | 是              | 是              |	
+	
+	
+	### 2.修改配置文件(core-site.xml、hdfs-site.xml、mapred-site.xml、yarn-site.xml) 参考文件配置
+	```
+	1. 下载apache hadoop包并解压
+	cd /export/softwares
+	tar -zxvf hadoop-2.7.5.tar.gz -C ../servers/
+	
+	2. 修改配置文件(core-site.xml、hdfs-site.xml、mapred-site.xml、yarn-site.xml)
+	# 1.修改core-site.xml
+	设置NameNode主机和端口、临时目录
+	# 2.修改hdfs-site.xml
+	# 3.修改mapred-site.xml
+	# 4.修改yarn-site.xml
+	# 修改hadoop-env.sh
+	export JAVA_HOME=/export/servers/jdk1.8.0_141
+	# 修改mapred-env.sh
+	export JAVA_HOME=/export/servers/jdk1.8.0_141
+	# 修改slaves
+	#安装包的分发
+	第一台机器执行以下命令
+	cd /export/servers/
+	scp -r hadoop-2.7.5 node02:$PWD
+	scp -r hadoop-2.7.5 node03:$PWD
+	
+	```
+	
+	### 3.配置hadoop的环境变量
+	三台机器都要进行配置hadoop的环境变量
+	```
+	vim /etc/profile
+	export HADOOP_HOME=/export/servers/hadoop-2.7.5
+	export PATH=:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$PATH
+	source /etc/profile
+	```
+	
+	### 4.启动集群
+	要启动 Hadoop 集群，需要启动 HDFS 和 YARN 两个模块。注意： 首次启动 HDFS 时，必须对其进行格式化操作
+	hdfs namenode -format 或者 hadoop namenode –format
+	
+	第一台机器执行以下命令
+	```
+	cd /export/servers/hadoop-2.7.5/
+	bin/hdfs namenode -format  # 首次启动，需要HDFS格式化
+	sbin/start-dfs.sh  # 启动hdfs
+	sbin/start-yarn.sh # 启动yarn
+	sbin/mr-jobhistory-daemon.sh start historyserver  # 启动mr历史任务进程
+	
+	```
+	
+	三个端口查看界面
+	http://node01:50070/explorer.html#/  查看hdfs
+	http://node01:8088/cluster  查看yarn集群
+	http://node01:19888/jobhistory  查看历史完成的任务
+	
+	

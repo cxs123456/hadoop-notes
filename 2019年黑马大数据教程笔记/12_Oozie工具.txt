@@ -1,0 +1,37 @@
+## 1.Oozie 概述
+	### 1.Oozie是什么、应用场景
+	**Oozie 是一个用来管理 Hadoop 生态圈 job 的工作流任务调度系统。 **
+	Oozie 的目的是按照 DAG（有向无环图） 调度一系列的 Map/Reduce 或者 Hive等任务。
+	应用场景包括：
+	- 需要按顺序进行一系列任务；
+	- 需要并行处理的任务；
+	- 需要定时、 周期触发的任务；
+	- 可视化作业流运行过程；
+	
+	工作流描述语言：XML
+	
+	### 2.Oozie 架构组件、原理
+	Oozie Client： 提供命令行、 java api、 rest 等方式，对 Oozie 的工作流流程的提交、启动、运行等操作；
+	Oozie WebApp ：即 Oozie Server,本质是一个 java 应用。 可以使用内置的web 容器， 也可以使用外置的 web 容器；
+	Hadoop Cluster ： 底层执行 Oozie 编排流程的各个 hadoop 生态圈组件；
+	
+	**1.原理：**
+	Oozie 对工作流的编排， 是基于 workflow.xml 文件来完成的。用户预先将工作流执行规则定制于 workflow.xml 文件中，
+	并在 job.properties 配置相关的参数，然后由 Oozie Server 向 MR 提交 job 来启动工作流
+	
+	**2.流程节点 **
+	工作流由两种类型的节点组成，分别是：
+	① Control Flow Nodes ：控制工作流执行路径，包括 start， end， kill， decision，fork,join。
+	② Action Nodes ：决定每个操作执行的任务类型，包括 MapReduce、 java、 hive、shell 等
+	
+	**3.工作流类型**
+	① WorkFlow ：规则相对简单，不涉及定时、批处理的工作流，顺序执行流程节点。
+	② Coordinator ：Coordinator 将多个工作流 Job 组织起来，称为 Coordinator Job并指定触发
+	时间和频率，还可以配置数据集、并发数等
+	③ Bundle ：针对 coordinator 的批处理工作流。 Bundle 将多个 Coordinator 管理起来，这
+	样我们只需要一个 Bundle 提交即可。
+	
+## 2.Oozie 安装部署(参考讲义)
+	
+
+## 3.Oozie 使用(很复杂的，参考讲义)

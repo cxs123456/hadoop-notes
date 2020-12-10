@@ -1,0 +1,234 @@
+## 1.Zookeeper概述(Zookeeper是什么、应用场景)
+	
+	### 1.Zookeeper是什么
+	1. **Zookeeper 是一个开源的分布式协调服务系统 ，主要用来解决分布式集群中应用系统的一致性问题和数据管理问题 **
+	2. **Zookeeper是1个分布式文件系统+监听通知机制 **
+	3. **Zookeeper文件系统中存储的其实是Znode, Znode 是 Zookeeper 中的节点，可以通过操作文件系统的方式操作 Zookeeper中的Znode ** 
+	
+	### 2.应用场景
+	常见应用场景：数据发布/订阅、命名服务、分布式协调/通知、分布式锁、分布式队列
+	#### 2.1 数据发布/订阅（配置中心管理）
+	    发布者将数据发布到Zookeeper的节点上，供订阅者进行数据订阅，进而达到动态获取数据的目的，
+	实现配置信息的集中式管理和数据的动态更新。
+	
+	    发布/订阅一般有两种设计模式：推模式和拉模式，服务端主动将数据更新发送给所有订阅的客户端称为
+	推模式；客户端主动请求获取最新数据称为拉模式.
+	
+	    Zookeeper 采用了推拉相结合的模式，客户端向服务端注册自己需要关注的节点，一旦该节点数据发生变
+	更，那么服务端就会向相应的客户端推送Watcher事件通知，客户端接收到此通知后，主动到服务端获取最新的数据。
+
+	#### 2.2 命名服务
+	通过命名服务，客户端可以根据指定名字来获取资源的实体，在分布式环境中，上层应用仅仅需要一个全局唯一的名字。
+	Zookeeper可以实现一套分布式全局唯一ID的分配机制
+	
+	#### 2.3 分布式协调/通知
+	　　Zookeeper中特有的Watcher注册于异步通知机制，能够很好地实现分布式环境下不同机器，甚至不同系统之间的协调与通知，从而实现对数据变更的实时处理。
+	通常的做法是不同的客户端都对Zookeeper上的同一个数据节点进行Watcher注册，监听数据节点的变化（包括节点本身和子节点），若数据节点发生变化，那么所有
+	订阅的客户端都能够接收到相应的Watcher通知，并作出相应处理。
+
+　　在绝大多数分布式系统中，系统机器间的通信无外乎 **心跳检测、工作进度汇报和系统调度。**
+
+　　① 心跳检测，不同机器间需要检测到彼此是否在正常运行。
+	Zookeeper基于其**临时节点特性**（临时节点的生存周期是客户端会话，客户端若当即后，其临时节点自然不再存在）
+	可以让不同机器都在Zookeeper的1个指定节点下创建临时子节点，不同的机器之间可以根据这个临时子节点来判断对应的客户端机器是否存活。
+
+　　② 工作进度汇报，通常任务被分发到不同机器后，需要实时地将自己的任务执行进度汇报给分发系统。
+	Zookeeper创建1个节点，每个任务客户端都在这个节点下面创建临时子节点，这样不仅可以判断机器是否存活，
+	同时各个机器可以将自己的任务执行进度写到该临时节点中去，以便中心系统能够实时获取任务的执行进度。
+
+　　③ 系统调度
+	Zookeeper能够实现如下系统调度模式：分布式系统由控制台和一些客户端系统两部分构成，控制台的职责就是需要将一些指令信息发送给所有的客户端，
+	以控制他们进行相应的业务逻辑，后台管理人员在控制台上做一些操作，实际上就是修改Zookeeper上某些节点的数据，Zookeeper可以把数据变更以时间
+	通知的形式发送给订阅客户端。
+	
+	#### 2.4 分布式锁
+	分布式锁：控制分布式系统之间同步访问共享资源的方式，可以保证不同系统访问1个或1组资源时的一致性，主要分为排它锁和共享锁。
+	**排它锁又称为写锁或独占锁 **
+	若事务T1对数据对象O1加上了排它锁，那么在整个加锁期间，只允许事务T1对O1进行读取和更新操作，其他任何事务都不能再对这个数据
+	对象进行任何类型的操作，直到T1释放了排它锁。
+	
+	① 获取锁，在需要获取排它锁时，所有客户端通过调用接口，在/exclusive_lock节点下创建
+	临时子节点/exclusive_lock/lock。Zookeeper可以保证只有一个客户端能够创建成功，没有成
+	功的客户端需要注册/exclusive_lock节点监听。
+	② 释放锁，当获取锁的客户端宕机或者正常完成业务逻辑都会导致临时节点的删除，此
+	时，所有在/exclusive_lock节点上注册监听的客户端都会收到通知，可以重新发起分布式锁获
+	取。
+	
+	**共享锁又称为读锁 **
+	若事务T1对数据对象O1加上共享锁，那么当前事务只能对O1进行读取操作，其他事务也只能对这个数据对象加共享锁，直到该数据对象上
+	的所有共享锁都被释放。在需要获取共享锁时，所有客户端都会到/shared_lock下面创建一个临时顺序节点
+	
+	#### 2.5 分布式队列
+	分布式环境下，我们同样需要1个类似单进程队列的组件，用来实现跨进程、跨主机、跨网
+	络的数据共享和数据传递，这就是我们的分布式队列。
+	① 数据入队，在一个节点下创建有序子节点，节点中设置需要入队的数据，完成数据的入队操作。
+    ② 数据出队，取出该节点下的所有子节点，如果数量不为0，取出一个子节点，并将子节点删除。
+	
+## 2.Zookeeper的架构组件、组件关系、原理
+	**Zookeeper是1个分布式文件系统和监听通知机制 **
+
+	### 1.Zookeeper的集群架构
+	Zookeeper集群是一个基于主从架构的高可用集群
+	
+	Zookeeper集群中三种角色：**Leader、Follower、Observer **
+	1. Leader Zookeeper集群同一时间只会有一个实际工作的Leader，它会发起并维护与各Follwer及Observer间的心跳。
+	所有的写操作必须要通过Leader完成再由Leader将写操作广播给其它服务器。
+	2. Follower Zookeeper集群可能同时存在多个Follower，它会响应Leader的心跳。
+	Follower可直接处理并返回客户端的读请求，同时会将写请求转发给Leader处理，并且负责在Leader处理写请求时对请求进行投票。
+	3. Observer 角色与Follower类似，但是无投票权
+	
+	### 2.Zookeeper的选举机制
+	Leader选举是保证分布式数据一致性的关键所在。当Zookeeper集群中的一台服务器出现以下两种情况之一时，需要进入Leader选举。
+	**服务器启动时期的Leader选举 **，**服务器运行时期的Leader选举 **
+	#### 2.1选举过程
+	① 每个Server发出1个投票
+	由于是初始情况，Server1和Server2都会将自己作为Leader服务器来进行投票，每次投票会包含所推举的服务器的myid和ZXID，使用(myid, ZXID)来表示，
+	此时Server1的投票为(1, 0)，Server2的投票为(2, 0)，然后各自将这个投票发给集群中其他机器
+	
+	② 接受来自各个服务器的投票
+	③ 处理投票
+	针对每一个投票，服务器都需要将别人的投票和自己的投票进行PK，PK规则如下
+	· 优先检查ZXID。ZXID比较大的服务器优先作为Leader。
+	· 如果ZXID相同，那么就比较myid。myid较大的服务器作为Leader服务器。
+	对于Server1而言，它的投票是(1, 0)，接收Server2的投票为(2, 0)，首先会比较两者的ZXID，均为0，再比较myid，此时Server2的myid最大，
+	于是更新自己的投票为(2, 0)，然后重新投票，对于Server2而言，其无须更新自己的投票，只是再次向集群中所有机器发出上一次投票信息即可。
+	④ 统计投票
+	⑤ 改变服务器状态
+	
+	### 3.zookeeper的数据模型（文件系统）
+	**ZooKeeper 是分布式文件系统的数据模型，每1个节点称为Znode,Znode保存数据和子节点列表 **
+	**ZooKeeper 保证 Znode 访问的原子性, 不会出现部分 ZK 节点更新成功, 部分 ZK 节点更新失败的问题 **
+	#### 3.1 Znode 的特点
+	1. Znode 兼具文件和目录两种特点，既可以保存数据，也可以有下级节点
+	2. Znode 通过路径引用，如果访问 Znode , 需要使用路径的形式, 例如 /test1/test11
+	3. Znode 存储数据大小有限制，** 最大只能为 1M **
+	4. Znode 是由三个部分构成 stat、data、children
+	stat : 状态, Znode的权限信息, 版本等
+	data : 数据, 每个Znode都是可以携带数据的, 无论是否有子节点
+	children : 子节点列表
+	
+	#### 3.2 Znode 的类型
+	**Znode 有两种，分别为临时节点和永久节点 **
+	**Znode 序列化的特性 **
+	    创建的时候指定的话，该 Znode 的名字后面会自动追加一个不断增加的序列号。
+		序列号对于此节点的父节点来说是唯一的，这样便会记录每个子节点创建的先后顺序。它的格式为“%10d”(10 位数字，没有数值的数位用 0 补充，
+	例如“0000000001”)。
+	Znode 四种类型分别对应
+	PERSISTENT：永久节点
+	EPHEMERAL：临时节点
+	PERSISTENT_SEQUENTIAL：永久节点、序列化
+	EPHEMERAL_SEQUENTIAL：临时节点、序列化
+	
+	### 4.Zookeeper的Watcher机制（监听通知机制）
+	**监听通知机制 ** 
+	- 类似于数据库中的触发器, 对某个Znode设置 Watcher , 当Znode发生变化的时候, WatchManager 会调用对应的 Watcher
+	- 当Znode发生删除, 修改, 创建, 子节点修改的时候, 对应的 Watcher 会得到通知
+	
+	**Watcher 的特点 **
+	1. 一次性触发一个 Watcher 只会被触发一次, 如果需要继续监听, 则需要再次添加Watcher
+	2. 事件封装: Watcher 得到的事件是被封装过的, 包括三个内容 keeperState, eventType, path
+	1次性、想要永久性需要每次都监听
+	
+## 3.Zookeeper集群安装、配置部署
+### 1.集群规划和安装配置
+|    服务器IP     | 主机名 | myid |
+| :-------------: | :----: | :--: |
+| 192.168.174.100 | node01 |  1   |
+| 192.168.174.110 | node02 |  2   |
+| 192.168.174.120 | node0  |  3   |
+
+	
+	```
+	1.下载安装包解压
+	cd /export/software
+	tar -zxvf zookeeper-3.4.9.tar.gz -C ../servers/
+	
+	2. 修改配置文件 zoo.cfg
+	cd /export/servers/zookeeper-3.4.9/conf/
+	cp zoo_sample.cfg zoo.cfg  #复制配置文件
+	mkdir -p /export/servers/zookeeper-3.4.9/zkdatas/  #创建保存数据的文件夹
+	
+	vim zoo.cfg  #修改zoo.cfg
+	# 设置保存数据的文件夹
+	dataDir=/export/servers/zookeeper-3.4.9/zkdatas
+	# 保留多少个快照
+	autopurge.snapRetainCount=3
+	# 日志多少小时清理一次
+	autopurge.purgeInterval=1
+	# 集群中服务器地址
+	server.1=node01:2888:3888
+	server.2=node02:2888:3888
+	server.3=node03:2888:3888
+	
+	3. 添加myid配置
+	# node01机器zkdatas文下创建1个文件，文件名为myid ,文件内容为1
+	echo 1 > /export/servers/zookeeper-3.4.9/zkdatas/myid
+	
+	4. 安装包分发并修改myid的值
+	scp -r /export/servers/zookeeper-3.4.9/ node02:/export/servers/
+	scp -r /export/servers/zookeeper-3.4.9/ node03:/export/servers/
+	echo 2 > /export/servers/zookeeper-3.4.9/zkdatas/myid
+	echo 3 > /export/servers/zookeeper-3.4.9/zkdatas/myid
+	
+	5. 三台机器启动zookeeper服务
+	# 启动zk
+	bin/zkServer.sh start
+	# 查看zk状态
+	bin/zkServer.sh status
+	```
+
+## 4.Zookeeper的API使用
+	### 1.Zookeeper的Shell 客户端操作
+	```
+	1. 登录Zookeeper客户端
+	bin/zkCli.sh -server node01:2181
+	
+	2. 操作实例
+	ls /  # 列出Path下的所有Znode
+	
+	# 创建Znode，-s 指定是顺序节点-e 指定是临时节点
+	create [-s] [-e] path data acl 
+	
+	create /hello world  # 创建永久节点
+	
+	create -e /abc 123  # 创建临时节点
+	
+	create -s /zhangsan boy # 创建永久序列化节点
+	
+	# 修改节点数据
+	set /hello zookeeper
+	
+	# 删除节点, 如果要删除的节点有子Znode则无法删除
+	delete /hello
+	# 删除节点, 如果有子Znode则递归删除
+	rmr /abc
+	
+	# 列出历史记录
+	histroy
+	```
+	
+	**查看Znode信息 **
+	Znode 都包含了一系列的属性，通过命令 get，可以获得节点的属性
+	
+	### 2.Zookeeper的Java API操作（如何使用，参考工程代码和讲义）
+	Zookeeper的JavaAPI使用的是一套zookeeper客户端框架 **Curator**(属于Apache软件)
+	Curator包含了几个包：
+	1. curator-framework：对zookeeper的底层api的一些封装
+	2. curator-recipes：封装了一些高级特性，如：Cache事件监听、选举、分布式锁、分布式计数器等
+	
+	```
+	# 创建maven java工程，导入jar包
+	<dependency>
+	<groupId>org.apache.curator</groupId>
+	<artifactId>curator-framework</artifactId>
+	<version>2.12.0</version>
+	</dependency>
+
+	<dependency>
+	<groupId>org.apache.curator</groupId>
+	<artifactId>curator-recipes</artifactId>
+	<version>2.12.0</version>
+	</dependency>
+
+	```
+	

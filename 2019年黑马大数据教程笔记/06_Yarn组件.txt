@@ -1,0 +1,31 @@
+## 1.Yarn 介绍
+	
+	### 1.Yarn是什么
+	yarn是hadoop集群当中的资源管理系统模块，主要用于管理集群当中的资源以及调度运行在yarn上面的各种任务。
+	yarn是分布式作业调度与集群资源管理系统。
+	
+	其调度分为两个层级来说：
+	一级调度管理：
+	  计算资源管理(CPU,内存，网络IO，磁盘)
+	二级调度管理：
+	  任务内部的计算模型管理 (AppMaster的任务精细化管理)
+	
+## 2. Yarn的架构组件、组件关系、原理、工作流程
+	### 1.Yarn的主要组件介绍与作用
+	① ResourceManager(rm) : 处理客户端请求、启动/监控ApplicationMaster、监控NodeManager、资源分配与调度。
+		主要由2个组件构成：调度器和应用程序管理器：
+		调度器(Scheduler)和应用程序管理器(Applications Manager)
+	② NodeManager(nm) : 单个节点上的资源管理、处理来自ResourceManager和ApplicationMaster的命令。
+	③ ApplicationMaster : 数据切分、为应用程序申请资源，并分配给内部任务、任务监控与容错。
+	④ Container : 对任务的运行环境资源的抽象，封装了CPU、内存等多维资源以及环境变量、启动命令等任务运行相关的信息。
+	
+	### 2.yarn的工作流程
+	(参考工程代码和讲义，4-yarn的工作流程.jpg)
+	
+	### 3.yarn的调度器
+	**FIFO Scheduler（队列调度器）**
+	**Capacity Scheduler（容量调度器，apache版本默认使用的调度器）**
+	**Fair Scheduler（公平调度器，CDH版本的hadoop默认使用的调度器）**
+	
+	### 4.关于yarn常用参数设置
+	(参考工程代码和讲义)

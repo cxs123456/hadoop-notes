@@ -1,0 +1,58 @@
+## 1.Azkaban 介绍(Azkaban是什么，应用场景)
+
+	### 1.Azkaban是什么、应用场景
+	**Azkaban 是一个批量工作流任务调度器，工作流任务调度系统**
+	Azkaban 使用 **job 配置文件** 建立任务之间的依赖关系，并提供一个易于使用的 web 用户界面维护和跟踪你的工作流。
+	应用场景：工作流任务调度
+	工作流描述语言：文本文件key-value键值对
+	
+	**Azkaban 功能特点：**
+	- 提供 job 配置文件快速建立任务和任务之间的依赖关系
+	- 基于 Java 开发，代码结构清晰，易于二次开发
+	
+	### 2.Azkaban 架构组件、原理
+	mysql : 存储元数据，如项目名称、项目描述、项目权限、任务状态、 SLA 规则等
+	AzkabanWebServer : 对外提供 web 服务，使用户可以通过 web 页面管理。职责包括项目管理、权限授权、任务调度、监控 executor。
+	AzkabanExecutorServer : 负责具体的工作流的提交、执行。
+	
+	
+## 2.Azkaban 安装部署(参考讲义)
+	1. solo-server 模式部署
+	2. two-server 模式部署
+	3. multiple-executor 模式部署
+
+## 3.Azkaban 使用(编写job文件，操作web页面)
+	① shell command 调度
+	```
+	# 1.创建 job 描述文件
+	vi command.job
+	#command.job
+	type=command
+	command=echo 'hello
+	# 2.将 job 资源文件打包成 zip 文件
+	zip command.job
+	# 3.通过 azkaban 的 web 管理平台创建 project 并上传 job 压缩包
+	```
+	
+	② job 依赖调度
+	```
+	# 1.创建有依赖关系的多个 job 描述
+	# 第一个 job： foo.job
+	# foo.job
+	type=command
+	command=echo foo
+	# 第二个 job： bar.job 依赖 foo.job
+	# bar.job
+	type=command
+	dependencies=foo
+	command=echo bar
+	
+	# 2.将所有 job 资源文件打到一个 zip 包中
+	# 3.在 azkaban 的 web 管理界面创建工程并上传 zip 包，启动工作流 flow
+	```
+	
+	③ HDFS 任务调度
+	④ MAPREDUCE 任务调度
+	⑤ HIVE 脚本任务调度
+	⑥ 定时任务调度
+	

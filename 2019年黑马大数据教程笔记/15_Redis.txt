@@ -1,0 +1,216 @@
+## 1.Redis介绍
+	
+	### 1.Redis是什么
+	Redis是NoSQL缓存数据库，支持持久化，存储的数据格式是key-value，支持5种存储数据类型，
+	包括string、list、hash、set、zset
+	
+	### 2.Redis应用场景(参考讲义)
+	①取最新N个数据的操作：使用list，lpush key value，ltrim key 0 500
+	②排行榜应用，取TOP N操作：使用zset
+	③需设置过期时间：expire key time
+	④计数器应用：incr和decr
+	⑤数据去重：使用set
+	⑥实时系统，反垃圾系统
+	⑦Pub/Sub构建实时消息系统
+	⑧构建队列：list、zset
+	⑨缓存
+	
+	### 3.Redis的特点
+	①高效性：Redis读取的速度是110000
+	次/s，写的速度是81000次/s
+	②原子性：Redis的所有操作都是原子性的，同时Redis还支持对几个操作全并后的原子性执行。
+	③支持多种数据结构：string（字符串），hash（哈希），list（列表），set（集合），zset(有序集合)
+	④稳定性：持久化，主从复制（集群）
+	⑤其他特性：支持过期时间，支持事务，消息订阅。
+
+	
+### 2.Redis安装
+	
+	①解压redis压缩包到指定目录
+	tar -zxvf redis-5.0.2.tar.gz -C ../servers/
+	②安装C程序运行环境
+	yum -y install gcc-c++
+	③进入redis-5.0.2目录，使用make&&make install进行安装，默认安装在了/usr/local/bin下
+	④修改redis配置文件，指定日志和数据的存放目录，不修改也行
+	vim redis.conf
+	```
+	bind 127.0.0.1
+	daemonize yes
+	pidfile /var/run/redis_6379.pid
+	logfile "/export/servers/redis-3.2.8/logs/redis.log"
+	dir /export/servers/redis-3.2.8/redisdata
+	```
+	⑤启动redis
+	./redis-server
+	⑥连接redis客户端
+	./redis-cli -h 127.0.0.1
+	
+	
+### 3.Redis使用
+
+	### 1.redis数据类型
+	**1.redis共支持五种数据类型，分别是string字符串，list列表，set集合，hash表、zset有序集合 **
+	(以下操作，参考讲义，Redis在线测试 http://try.redis.io)
+	①string操作：
+		set get getset getrange mget setex setnx setrange strlen mset msetnx incrbyfloat append
+	②list操作：
+		lpush lrange lpushx rpush rpushx linsert lindex lset llen lpop rpop blpop ltrim rpoplpush
+	③hash操作：
+		hset hsetnx hmset hexists hget hgetall hkeys hlen hmget hincrby hincrbyfloat hvals hdel
+	④set操作：
+		sadd smembers scard sdiff sdiffstore sinter sinterstore sismember smove spop srandmember srem sunion sunionstore
+	⑤zset操作：
+	⑥对key的操作：
+		del dump exists expire pexpire keys persist ttl pttl randomkey rename renamenx type
+	Redis大部分常用命令(字母顺序)：
+	decr, decrby, del, 
+	exists, expire, 
+	get, getset, 
+	hdel, hexists, hget, hgetall, hincrby, hkeys, hlen, hmget, hmset, hset, hvals, 
+	incr, incrby, 
+	keys, 
+	lindex, llen, lpop, lpush, lrange, lrem, lset, ltrim, 
+	mget, mset, msetnx, multi, 
+	pexpire, 
+	rename, renamenx, rpop, rpoplpush, rpush, 
+	sadd, scard, sdiff, sdiffstore, set, setex, setnx, sinter, sinterstore, sismember, smembers, smove, sort, spop, 
+	srandmember, srem, sunion, sunionstore, 
+	ttl, type, 
+	zadd, zcard, zcount, zincrby, zrange, zrangebyscore, zrank, zrem, zremrangebyscore, zrevrange, zscore	
+	
+	### 2.redis的事务操作
+	Multi 命令用于标记一个事务块的开始
+	事务块内的多条命令会按照先后顺序被放进一个队列当中，最后由 EXEC 命令原子性(atomic)地执行。
+	Multi  # 标记事务开始
+	命令1  # 多条命令按顺序入队
+	命令2
+	命令3
+	EXEC  # 执行
+	
+	### 3.redis的 javaAPI 操作(参考讲义和工程代码，不做详细笔记)
+	1.使用springboot的redis依赖
+	
+	### 4.redis的持久化
+	redis是内存数据库，所有的数据都是保存在内存中的，内存中的数据容易丢失，
+	redis提供了两种数据持久化的方式，分别为RDB以及AOF。
+	redis默认开启的数据持久化方式为RDB
+	
+	**1.RDB持久化 **
+	Redis会定期保存数据快照至一个rbd文件中，并在启动时自动加载rdb文件，恢复之前保存的数据。
+	可以在配置文件中配置Redis进行快照保存的时机：
+	save [seconds] [changes]
+	意为在[seconds]秒内如果发生了[changes]次数据修改，则进行一次RDB快照保存，例如
+	save 60 100
+
+	**1.AOF持久化 **
+	采用AOF持久方式时，Redis会把每一个写请求都记录在一个日志文件里。
+	在Redis重启时，会把AOF文件中记录的所有写操作顺序执行一遍，确保数据恢复到最新。
+	AOF默认是关闭的，如要开启，进行如下配置：
+	appendonly yes
+	AOF提供了三种fsync配置：always/everysec/no，通过配置项[appendfsync]指定。
+	按需选择，其中 always 最安全，一般生产上选择 everysec
+	在生产环境里面，一般来说AOF都是要打开的
+	
+	
+## 4.Redis架构(主从、哨兵、集群)
+	
+	### 1.redis 的主从复制架构(详情参考讲义)
+	准备3台服务器安装都Redis，其中2台从服务器的配置文件中配置项[slaveof]指定主服务器和端口
+	例如：
+	vim redis.conf
+	slaveof node01 6379
+	
+	### 2.redis 的Sentinel架构(详情参考讲义)
+	Sentinel（哨兵）是Redis 的高可用性解决方案：
+	由1个或多个Sentinel 实例组成的Sentinel系统用来监视主服务器和从服务器，并在被监视的主服务器进入下线状态时，
+	自动将下线主服务器属下的某个从服务器升级为新的主服务器。
+	
+	**1.搭建Sentinel架构：**
+	①3台机器修改哨兵配置文件，sentinel.conf
+	vim sentinel.conf
+	```
+	#配置sentinel服务后台运行
+	daemonize yes
+	#修改三台机器监控的主节点，现在主节点是node01服务器
+	sentinel monitor mymaster node01 6379 2
+	# sentinel author-pass定义服务的密码，mymaster是服务名称，123456是Redis服务器密码
+	# sentinel auth-pass <master-name> <password>
+	```
+	②3台机器启动哨兵服务
+	src/redis-sentinel sentinel.conf
+	③node01服务器杀死redis服务进程，模拟redis故障宕机情况
+	
+	**2.redis的sentinel模式java代码开发(参考讲义代码)
+	
+	### 3.redis集群
+	**redis集群由多个redis节点组成，每个节点包含主从、哨兵架构**
+	搭建redis集群最少需要3主3从的配置，所以redis集群最少需要6台redis的实例，
+	我们这里使用3台机器，每台服务器上面运行2个redis的实例。
+	我们这里使用node01服务器，通过配置不同的端口，实现redis集群的环境搭建
+	
+	**1.redis集群搭建 **
+	①创建6个配置文件夹
+	mkdir -p /export/redis-3.2.8/clusters/7001
+	mkdir -p /export/redis-3.2.8/clusters/7002
+	mkdir -p /export/redis-3.2.8/clusters/7003
+	mkdir -p /export/redis-3.2.8/clusters/7004
+	mkdir -p /export/redis-3.2.8/clusters/7005
+	mkdir -p /export/redis-3.2.8/clusters/7006
+	②修改6个配置文件
+	vim redis.conf
+	```
+	bind node01
+	#指定端口
+	port 7001 
+	#开启集群
+	cluster-enabled yes 
+	#集群配置文件
+	cluster-config-file nodes-7001.conf 
+	cluster-node-timeout 5000
+	appendonly yes
+	daemonize yes
+	pidfile /var/run/redis_7001.pid
+	logfile "/export/redis-3.2.8/logs/7001.log"
+	# 这个文件夹先创建
+	dir /export/redis-3.2.8/redisdata/7001
+	```
+	// 将修改后的文件拷贝到对应的文件夹下面去
+	cp /export/redis-3.2.8/redis.conf /export/redis-3.2.8/clusters/7001
+	// 其余5个文件按照上面的配置，将内容中7001改成自己对面的端口号7002、7003...
+	③启动6个redis进程 
+	cd /export/redis-3.2.8
+	src/redis-server clusters/7001/redis.conf
+	④安装 ruby 运行环境
+	node01执行以下命令，安装ruby运行环境，因为redis集群的启动需要借助ruby的环境
+	yum install ruby
+	yum install rubygems
+	gem install redis
+	⑤创建redis集群
+	node01执行以下命令创建redis集群
+	```
+	cd /export/redis-3.2.8
+	gem install redis
+	src/redis-trib.rb create --replicas 1 \
+	192.168.100.100:7001 192.168.100.100:7002 \
+	192.168.100.100:7003 192.168.100.100:7004 \
+	192.168.100.100:7005 192.168.100.100:7006 
+	```
+	⑥连接redis客户端
+	node01执行以下命令连接redis客户端
+	cd /export/redis-3.2.8
+	./redis-cli  -h node01 -c -p 7001
+	
+	**1.redis集群管理 **
+	①添加一个新节点作为主节点
+	./redis-server clusters/7007/redis.conf
+	./redis-trib.rb add-node 192.168.100.100:7007 192.168.100.100:7001
+
+	②添加一个新节点作为副本
+	./redis-server clusters/7008/redis.conf
+	./redis-trib.rb add-node --slave 192.168.100.100:7008 192.168.100.100:7001
+
+	③删除一个节点
+	./redis-trib.rb del-node 127.0.0.1:7000 `<node-id>`
+	④重新分片
+	./redis-trib.rb reshard --from <node-id> --to <node-id> --slots <number of slots> --yes <host>:<port>
+

@@ -1,0 +1,349 @@
+[项目介绍 -> 技术架构 -> 开发流程]()
+
+## 1.网站流量日志分析项目介绍
+
+	**1.分析意义：**
+	改善网站的运营，提高投资回报率（ ROI , Return on Investment ），挣更多的钱。
+	 
+	**2.如何进行网站分析：**
+	网站的目标：投资回报率（ ROI ）
+	流量分析->内容分析->转化分析
+			端到端分析
+	**指标是访问量，就是我们常说的流量 **
+	
+## 2.整体技术流程及架构
+	
+	### 1.数据处理流程
+	**① 数据采集->② 数据预处理-> ③数据入库(数仓设计,ETL)->④ 数据分析->⑤ 数据可视化 **
+	
+	数据入库过程有个更加专业的叫法—ETL。 ETL 是将业务系统的数据经过抽取、清洗转换、加载到数据仓库的过程，
+	目的是将企业中的分散、零乱、标准不统一的数据整合到一起，为企业的决策提供分析依据。
+	
+	**ETL 的设计分三部分：数据抽取、数据的清洗转换、数据的加载。**
+	数据的抽取:是从各个不同的数据源抽取到 ODS(Operational DataStore，操作型数据存储)中
+	花费时间最长的是"T"(Transform，清洗、转换)的部分，一般情况下这部分工作量是整个 ETL 的 2/3
+	数据的加载:一般在数据清洗完了之后直接写入 DW(Data Warehousing，数据仓库)中去
+	
+	### 2.系统的架构
+	① 数据采集： 页面埋点 JavaScript 采集；开源框架 Apache Flume；
+	② 数据预处理： Hadoop MapReduce 程序；
+	③ 数据入库(ETL)：
+	- 数据仓库技术：基于 hadoop 的数据仓库 Hive 。
+	- 数据导入导出：基于 hadoop 的 sqoop 数据导入导出工具 。
+	④ 数据分析：根据需求使用 Hive SQL 分析语句，得出指标各种统计结果 。
+	⑤ 数据可视化：定制开发 web 程序(ECharts)
+	
+	整个过程的流程调度： hadoop 生态圈中的 azkaban 工具
+	
+	
+## 3.模块开发----数据采集
+	
+	**网站流量日志数据获取方式： **
+	1. 网站日志文件（ Log files），比如Nginx的access.log日志，Tomcat日志文件
+	2. 页面埋点 js 自定义采集
+	
+	### 1.数据采集之 js 自定义采集(参考工程代码和讲义)
+	**1.原理分析：**
+	1. 当网页被打开，埋点 javascript 代码会被执行。
+	2. 埋点代码，在网页中预先加入小段 javascript 代码，这个代码片段一般会动态创建一个 script 标签，
+	并将 src 属性指向一个单独的 js 文件，这个js文件就是数据收集脚本。
+	3. 数据收集脚本 js 文件收集数据并通过img标签方式请求后端脚本url，比如***/collect/log.gif。
+	4. 后端脚本解析参数并按固定格式记录到访问日志，同时可能会在 http 响应中给客户端种植一些用于追踪的 cookie。	
+	
+	**2.设计实现：**(参考讲义和代码)
+	① 确定收集信息
+	② 埋点代码实现
+	```
+	// 1.埋点代码
+	<script type="text/javascript">
+		var _maq = _maq || [];
+		_maq.push(['_setAccount', 'UA-XXXXX-X']);
+		!(function() {
+			var ma = document.createElement('script'); 
+			ma.type ='text/javascript'; 
+			ma.async = true;
+			ma.src = 'xxxxx/ma.js';
+			var s = document.getElementsByTagName('script')[0];
+			s.parentNode.insertBefore(ma, s);
+		})();
+	</script>
+	```
+	③ 前端数据收集脚本 ma.js
+	```
+	(function() {
+		var params = {};
+		// Document 对象数据
+		if (document) {
+			params.domain = document.domain || '';
+			params.url = document.URL || '';
+			params.title = document.title || '';
+			params.referrer = document.referrer || '';
+		}
+		// Window 对象数据
+		if (window && window.screen) {
+			params.sh = window.screen.height || 0;
+			params.sw = window.screen.width || 0;
+			params.cd = window.screen.colorDepth || 0;
+		}
+		// navigator 对象数据
+		if (navigator) {
+			params.lang = navigator.language || '';
+		}
+		// 解析_maq 配置
+		if (_maq) {
+			for (var i in _maq) {
+				switch (_maq[i][0]) {
+				case '_setAccount':
+					params.account = _maq[i][1];
+					break;
+				default:
+					break;
+				}
+			}
+		}
+		// 拼接参数串
+		var args = '';
+		for (var i in params) {
+			if (args != '') {
+				args += '&';
+			}
+			args += i + '=' + encodeURIComponent(params[i]);
+		}
+		// 通过 Image 对象请求后端脚本
+		var img = new Image(1, 1);
+		img.src = 'http://xxx.xxxxx.xxxxx/log.gif?' + args;
+	})();		
+	```
+	④ 后端脚本(参考讲义，代码太多)
+	跟踪唯一访客方式：在响应头中通过 Set-cookie 设置一些需要的 cookie 信息
+	⑤ 日志格式
+	⑥ 日志切分
+	日志收集系统访问日志时间一长文件变得很大，而且日志放在一个文件不便于管理。
+	通常要按时间段将日志切分，例如每天或每小时切分一个日志。
+	通过crontab 定时调用一个 shell 脚本实现，如下：
+	```
+	nginx_path_prefix=/usr/local/nginx
+	time=`date +%Y%m%d%H`
+	mv ${nginx_path_prefix}/logs/user_defined.log ${nginx_path_prefix}/logs/user_defined-${time}.log
+	kill -USR1 `cat ${nginx_path_prefix}/logs/nginx.pid`
+	```
+	**脚本解释：**
+	这个脚本将 user_defined.log 移动重命名为 user_defined-${time}.log，
+	然后向 nginx 发送 USR1 信号令其重新打开日志文件。
+	USR1 通常被用来告知应用程序重载配置文件, 向服务器发送一个 USR1 信号
+	将导致以下步骤的发生：停止接受新的连接，等待当前连接停止，重新载入配置
+	文件，重新打开日志文件，重启服务器，从而实现相对平滑的不关机的更改。
+	`cat ${nginx_path_prefix}/logs/nginx.pid` 取 nginx 的进程号
+	然后再/etc/crontab 里加入一行：
+	`59 * * * * root /path/to/directory/rotatelog.sh`
+	在每个小时的 59 分启动这个脚本进行日志轮转操作。
+	
+	
+	### 2.数据采集之 Flume 采集(参考讲义代码)
+	**1.Taildir Source 组件 **
+	针对 nginx 日志生成场景， 如果通过 flume（ 1.6）收集，无论是 Spooling Directory
+	Source 和 Exec Source 均不能满足动态实时收集的需求，在 flume1.7 版本之后，提供了一
+	个非常好用的 TaildirSource，使用这个 source，可以监控一个目录，并且使用正则表达式
+	匹配该目录中的文件名进行实时收集。
+	
+	**2.HDFS sink 文件滚动属性 **
+	1. 基于文件闲置时间策略
+	hdfs.idleTimeout  默认值0
+	这种策略很简单，如果文件在 hdfs.idleTimeout 秒的时间里都是闲置的，没有任何数据写入，
+	那么当前文件关闭，滚动到下一个文件。
+	2. 基于 hdfs 文件副本数
+	hdfs.minBlockReplicas  默认值和hdfs 的副本数一致
+	
+	
+## 4.模块开发----数据预处理
+	
+	**主要目的 **
+	1. 过滤“不合规”数据，清洗无意义的数据。
+	2. 格式转换和规整。
+	3. 根据后续的统计需求，过滤分离出各种不同主题(不同栏目 path)的基础数据。
+	实现方式：使用 MapReduce 程序对数据进行预处理。
+	
+	### 1.点击流模型数据(详细参考讲义代码)
+	#### 1.1 点击流概念
+	点击流（ Click Stream）：用户在网站上持续访问的轨迹。
+	点击流和网站日志是两个不同的概念，点击流是从用户的角度出发，注重用户浏览网站的整个流程；
+	而网站日志是面向整个站点，它包含了用户行为数据、服务器响应数据等众多日志信息，我们通过对网站日志的分析可以获得用户的点击流数据。
+	点击流模型数据：PV(PageViews)、UV(Unique Visits)
+	
+	#### 1.2 点击流模型 PageViews (参考讲义和工程代码)
+	Pageviews 模型专注于用户每次会话 session 的识别，以及每次 session 内访问了几步和每一步的停留时间。
+	在网站分析中，通常把前后两条访问记录时间差在30分钟以内算成一次会话。如果超过30分钟，则把下次访问算成新的会话开始。
+	最后一步和只有一步的 业务默认指定页面停留时间 60s
+	
+	**Pageviews就是session中每条记录 **
+	
+	#### 1.3 点击流模型 visits (参考讲义和工程代码)
+	Visit 模型专注于每次会话 session 内起始、结束的访问情况信息。 
+	比如用户在某一个会话 session 内，进入会话的起始页面和起始时间，会话结束是从哪个页面离开的，
+	离开时间，本次 session 总共访问了几个页面等信息。
+	业务指定最后一条记录的时间页面作为离开时间和离开页面
+	
+	**Visits就是整个sesion的1条记录，并整合记录起始、结束Pageviews信息 **
+
+
+## 4.模块开发----数据仓库设计
+	
+	### 1.维度建模基本概念
+	维度建模以分析决策的需求出发构建模型，构建的数据模型为分析需求服务，因此它重点解决用户如何
+	更快速完成分析需求，同时还有较好的大规模复杂查询的响应性能。
+	维度建模是专门应用于分析型数据库、数据仓库、数据集市建模的方法。数据集市可以理解为是一种"小型数据仓库"。
+	
+	**1.事实表 **
+	事实表：发生在现实世界中的操作型事件，其所产生的可度量数值，存储在事实表中
+	事实表表示对分析主题的度量。比如一次购买行为我们就可以理解为是一个事实。
+	事实表包含了与各维度表相关联的外键，可与维度表关联。
+	事实表的度量通常是数值类型，且记录数会不断增加，表数据规模迅速增长。
+	
+	**2.维度表 **
+	维度：表示你要对数据进行分析时所用的一个量,比如你要分析产品销售情况,你可以选择按类别来进行分析,或按区域来分析。
+	
+	事实表的设计是以能够正确记录历史信息为准则。
+	维度表的设计是以能够以合适的角度来聚合主题内容为准则。
+	
+	### 2.维度建模3种模式(星型、雪花、星座)
+	1. 星型模式：是以事实表为中心，所有的维度表直接连接在事实表上，像星星一样。
+		星形模式的维度建模由一个事实表和一组维表成，且具有以下特点：
+		a. 维表只和事实表关联，维表之间没有关联；
+		b. 每个维表主键为单列，且该主键放置在事实表中，作为两边连接的外键；
+		c. 以事实表为核心，维表围绕核心呈星形分布；
+	2. 雪花模式：是对星形模式的扩展。雪花模式的维度表可以拥有其他维度表的。所以一般不是很常用。
+	3. 星座模式：基于多张事实表的，而且共享维度信息。
+	在业务发展后期，绝大部分维度建模都采用的是星座模式。
+	
+	### 3.本项目数据仓库设计(参考讲义代码)
+	本项目中采用星型模型，事实表就是网站流量日志，维度表取决于业务。
+	1. 事实表设计：ods_weblog_origin（原始日志表）、dw_weblog_detail（访问日志明细宽表）
+	2. 维度表设计：t_dim_time(时间维度)、t_dim_area(访客地域维度)、t_dim_termination(终端类型维度)、t_dim_section(网站栏目维度)
+	
+## 5.模块开发----数据入库(ETL)
+
+	**ETL 工作的实质就是从各个数据源提取数据，对数据进行转换，并最终加载填充数据到数据仓库维度建模后的表中。**
+	本项目的数据分析过程在 hadoop 集群上实现，主要应用 hive 数据仓库工具，因此，采集并经过预处理后的数据，
+	需要加载到 hive 数据仓库中，以进行后续的分析过程。
+	
+	### 1.创建 ODS 层数据表(参看讲义代码)
+	① 原始日志数据表(ods_weblog_origin)
+	② 点击流模型pageviews表(ods_click_pageviews)
+	③ 点击流visit模型表(ods_click_stream_visit)
+	
+	### 2.导入 ODS 层数据(参看讲义代码)
+	
+	
+## 6.模块开发-----统计分析
+	
+	### 1.流量分析常见分类
+	**1.基础级指标 **
+	PageView 浏览次数（ PV） :用户每打开 1 个网站页面，记录 1 个 PV。用户多次打开同一页面 PV 累计多次。 通俗解释就是页面被加载的总次数。
+	Unique Visitor 独立访客（ UV） : 1 天之内，访问网站的不重复用户数（以浏览器 cookie 为依据），一天内同一访客多次访问网站只被计算 1 次。
+	访问次数（ VV）： 访客从进入网站到离开网站的一系列活动记为一次访问，也称会话(session),1 次访问(会话)可能包含多个 PV。
+	IP
+	
+	**2.复合级指标 **
+	平均访问频度: 平均每个独立访客一天内访问网站的次数（产生的 session 个数）,平均访问频度=访问次数/独立访客数
+	人均浏览页数（平均访问深度）：平均每个独立访客产生的浏览次数。人均浏览页数=浏览次数/独立访客。
+	平均访问时长：平均每次访问（会话）在网站上的停留时间。体现网站对访客的吸引程度。平均访问时长=访问总时长/访问次数。
+	跳出率: 跳出率是指用户到达你的网站上并在你的网站上仅浏览了一个页面就离开的访问次数与所有访问次数的百分比。是评价网站性能的重要指标。
+	
+	**3.分析模型 **
+	流量分析基础分析（ PV,UV,VV,IP）、来源分析、受访分析、访客分析
+	
+	### 2.统计分析(参看讲义sql代码)
+	**1.流量分析 **
+	**分组 TOP 问题（分组函数）**
+	需求描述： 统计每小时各来访 host 的产生的 pvs 数最多的前 N 个（ topN）。
+	row_number()函数
+	 语法： row_number() over (partition by xxx order by xxx) rank， 
+	rank 为分组的别名，相当于新增一个字段为 rank。
+	partition by 用于分组，比方说依照 sex 字段分组
+	order by 用于分组内排序，比方说依照 sex 分组后，组内按照 age 排序
+	排好序之后，为每个分组内每一条分组记录从 1 开始返回一个数字
+	取组内某个数据，可以使用 where 表名.rank>x 之类的语法去取
+	以下语句对每个小时内的来访 host 次数倒序排序标号:
+	select ref_host,ref_host_cnts,concat(month,day,hour),
+	row_number() over (partition by concat(month,day,hour) order by ref_host_cnts desc) as od 
+	from dw_pvs_refererhost_everyhour;
+	
+	2.受访分析
+	3.访客分析
+	4.访客 Visit 分析（点击流模型）
+	5.关键路径转化率分析（漏斗模型）
+
+## 7.模块开发-----数据导出(参考讲义)
+	
+	### 1.Sqoop 导出项目数据
+	1. 全量导出数据到 mysql
+	**导出 dw_pvs_referer_everyhour 表数据到 HDFS**
+	insert overwrite directory '/weblog/export/dw_pvs_referer_everyhour' row format delimited
+	fields terminated by ',' STORED AS textfile select referer_url,hour,pv_referer_cnt from
+	dw_pvs_referer_everyhour where datestr = "20181101";
+	
+	2. 增量导出数据到 mysql
+	使用 sqoop export 中--update-mode 的 allowinsert 模式进行增量数据导入目标表中。 
+	3. 定时增量导出数据到 mysql
+	编写shell脚本，使用linux crontab 进行定时调度执行
+	
+	
+## 8.模块开发----工作流调度（参考讲义）
+	
+	### 1.项目中 Azkaban 使用
+		① 数据预处理定时调度
+		② 数据入库定时调度
+		③ 数据统计计算定时调度
+	
+## 9.模块开发----数据可视化（参考讲义）
+	
+	**ECharts 的使用 **
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

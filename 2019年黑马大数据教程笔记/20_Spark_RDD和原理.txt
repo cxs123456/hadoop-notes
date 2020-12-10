@@ -1,0 +1,333 @@
+## 1.Spark 介绍
+	**课程目标：**
+	- Spark 是什么
+	- Spark 的特点
+	- Spark 组件
+
+	### 1.1 Spark 是什么
+	Apache Spark 是分布式计算框架，相对于 Hadoop MapReduce 将中间结果保存在磁盘中, Spark 使用了内存保存中间结果, 能在数据尚未写入硬盘时在内存中进行运算。
+	**重要概念：**
+	弹性分布式数据集RDDs(Resilient Distributed Datasets)：是一个可以容错且并行的数据结构, 它可以让用户显式的将中间结果数据集保存在内中, 
+	并且通过控制数据集的分区来达到数据存放处理最优化。
+
+	> **注意：**
+	1.Spark 是为了解决 MapReduce 等过去的计算系统无法在内存中保存中间结果的问题。
+	2.Spark 的核心是 RDDs, RDDs 不仅是一种计算框架, 也是一种数据结构。
+
+	### 1.2 Spark 的特点
+	①速度快
+	②易用
+	③通用
+	④兼容
+
+	### 1.3 Spark 组件
+	1.Spark-Core 和 弹性分布式数据集(RDDs)
+	2.Spark SQL
+	3.Spark Streaming：流处理框架（小批量流处理，不是实时流处理）
+	4.MLlib：Spark 上分布式机器学习的框架.
+	5.GraphX：分布式图计算框架, 提供了一组可以表达图计算的 API, GraphX 还对这种抽象化提供了优化运行
+	Spark 提供了 批处理(RDDs), 结构化查询(DataFrame), 流计算(SparkStreaming), 机器学习(MLlib), 图计算(GraphX) 等组件
+
+---
+## 2.Spark 集群
+	**课程目标：**
+	- 从 Spark 的集群架构开始, 理解分布式环境, 以及 Spark 的运行原理
+	- 理解 Spark 的集群搭建, 包括高可用的搭建方式
+
+	### 2.1 Spark 集群结构
+	**1.Spark集群架构4个组件：**
+	- Driver：该进程调用 Spark 程序的 main 方法, 并且启动 SparkContext。
+	- Cluster Manager：该进程负责与外部集群工具交互, 申请和释放集群资源。
+	- Worker：该进程是一个守护进程, 负责启动和管理 Executor。
+	- Executor：该进程是一个JVM虚拟机, 负责运行 Spark Task。
+
+	**2.运行Spark程序大致4个步骤：**
+	1. 启动 Drive, 创建 SparkContext对象。
+	2. Client 提交程序给 Drive, Drive 向 Cluster Manager 申请集群资源。
+	3. 资源申请完毕, 在 Worker 中启动 Executor。
+	4. Driver 将程序转化为 Task，分发给 Executor 执行。
+
+	> **总结：**
+	Spark 程序可以运行在集群中，由集群管理工具管理和分配资源。
+	常见的集群管理工具: Hadoop Yarn，Apache Mesos，Kubernetes。
+	Master 负责总控, 调度, 管理和协调 Worker，保留资源状况等
+	Slave 对应 Worker 节点, 用于启动 Executor 执行 Tasks, 定期向 Master汇报
+	Driver 运行在 Client 或者 Slave(Worker) 中，默认运行在 Slave(Worker) 中
+
+---
+## 3.Spark 开发入门
+	理解编写 Spark 程序的2种常见方式：
+	1. spark-shell：类似于 Scala 提供的交互式解释器，可以直接在 Shell 中编写代码执行，一般用于数据的探索。
+	2. spark-submit：用于基于 Spark 框架编辑的程序，这种提交方式常用作于在集群中运行任务。
+
+	### 3.1 spark-shell编写 WordCount
+	``` scala
+		// bin/spark-shell --master local[2] 启动 Spark shell
+		// 读取本地文件，并且每行作为rdd的列表元素
+		val sourceRdd = sc.textFile("file:///export/data/wordcount.txt")
+		// 1.flatMap(_.split(" ")) 将数据转为数组的形式, 并展平为多个数据
+		// 2.map_, 1 将数据转换为元组的形式
+		val flattenCountRdd = sourceRdd.flatMap(_.split(" ")).map((_, 1))
+		// 3.reduceByKey(_ + _) 计算每个 Key 出现的次数
+		val aggCountRdd = flattenCountRdd.reduceByKey(_ + _)
+		
+		val result = aggCountRdd.collect
+	```
+
+	> **注意：**
+	1.sc 变量指的是 SparkContext, 是 Spark 程序的上下文和入口。
+	2.读取 HDFS 上的文件：sc.textFile("hdfs://node01:8020/dataset/wordcount.txt")。
+
+	### 3.2 提交 Spark的程序任务(spark-submit)
+	①创建maven工程，pom文件添加spark-core依赖。
+	②pom文件指定 Scala 的源码目录src/main/scala 和测试目录 src/test/scala，添加maven-shade-plugin插件打包。
+	③创建 Scala object WordCount类。
+	``` scala
+		object WordCounts {
+
+		  def main(args: Array[String]): Unit = {
+			// 1. 创建 Spark Context
+			val conf = new SparkConf().setMaster("local[2]")
+			val sc: SparkContext = new SparkContext(conf)
+
+			// 2. 读取文件并计算词频
+			val source: RDD[String] = sc.textFile("hdfs://node01:8020/dataset/wordcount.txt", 2)
+			val words: RDD[String] = source.flatMap { line => line.split(" ") }
+			val wordsTuple: RDD[(String, Int)] = words.map { word => (word, 1) }
+			val wordsCount: RDD[(String, Int)] = wordsTuple.reduceByKey { (x, y) => x + y }
+
+			// 3. 查看执行结果
+			println(wordsCount.collect)
+		  }
+		}
+	```
+	④打包工程，并且提交运行。
+	``` shell
+		//spark-submit 命令 spark-submit [options] <app jar> <app options>
+		spark-submit --master spark://node01:7077 \
+		--class cn.itcast.spark.WordCounts \
+		original-spark-0.1.0.jar	
+	```
+
+---
+## 4.Spark RDD 入门
+	### 4.1 RDD是什么
+	**RDD, 全称为 Resilient Distributed Datasets, 是一个容错的, 并行的数据结构, 可以让用户显式地将数据存储到磁盘和内存中, 并能控制数据的分区。**
+	**RDD是一种数据结构，一个编程模型（计算框架）。**
+	在 WordCount 代码中, 大致的思路如下:
+	1. 使用 sc.textFile() 方法读取 HDFS 中的文件, 并生成一个 RDD
+	2. 使用 flatMap 算子将读取到的每一行字符串打散成单词, 并把每个单词变成新的行
+	3. 使用 map 算子将每个单词转换成 (word, 1) 这种元组形式
+	4. 使用 reduceByKey 统计单词对应的频率
+
+	RDD 还提供了丰富的操作数据的方法，我们称之为算子，比如：map, flatMap, filter 。
+	**1. RDD的特点：**
+	1. RDD 是一个数据结构
+		- RDD 允许用户显式的指定数据存放在内存或者磁盘
+		- RDD 是分布式的, 用户可以控制 RDD 的分区
+	2. RDD 是一个编程模型
+		- RDD 提供了丰富的操作
+		- RDD 提供了 map, flatMap, filter 等操作符, 用以实现 Monad 模式
+		- RDD 提供了 reduceByKey, groupByKey 等操作符, 用以操作 Key-Value 型数据
+		- RDD 提供了 max, min, mean 等操作符, 用以操作数字型的数据
+	3. RDD 是混合型的编程模型, 可以支持迭代计算, 关系查询, MapReduce, 流计算
+	4. RDD 是只读的
+	5. RDD 之间有依赖关系, 根据执行操作的操作符的不同, 依赖关系可以分为宽依赖和窄依赖
+	6. RDD 是可以容错的，容错有两种方式。
+		- 保存 RDD 之间的依赖关系, 以及计算函数, 出现错误重新计算
+		- 直接将 RDD 的数据存放在外部存储系统, 出现错误直接读取, Checkpoint
+
+	**2. RDD的的五大属性：**
+	Partition List：分片列表，记录 RDD 的分片，可以在创建 RDD 的时候指定分区数目, 也可以通过算子来生成新的 RDD 从而改变分区数目
+	Compute Function：计算函数，为了实现容错, 需要记录 RDD 之间转换所执行的计算函数
+	RDD Dependencies：RDD依赖关系，RDD 之间的依赖关系, 要在 RDD 中记录其上级 RDD 是谁, 从而实现容错和计算
+	Partitioner：分区函数，为了执行 Shuffled 操作, 必须要有一个函数用来计算数据应该发往哪个分区
+	Preferred Location：优先位置，为了实现数据本地性操作, 从而移动计算而不是移动存储, 需要记录每个 RDD 分区最好应该放置在什么位置
+
+	### 4.2 RDD的创建
+	RDD 有3种创建方式：
+	* 1.RDD 通过本地集合直接创建
+	* 2.RDD 通过读取外部数据集(外部文件系统)来创建
+	* 3.RDD 通过其它的 RDD 衍生而来
+	``` scala
+		val conf = new SparkConf().setMaster("local[2]")
+		val sc = new SparkContext(conf)
+		// 1.通过本地集合直接创建RDD
+		val list = List(1, 2, 3, 4, 5, 6)
+		// 通过 parallelize 和 makeRDD 这两个 API 可以通过本地集合创建 RDD
+		val rddParallelize = sc.parallelize(list, 2)
+		val rddMake = sc.makeRDD(list, 2)
+		
+		// 2.通过读取外部文件创建 RDD
+		val source: RDD[String] = sc.textFile("hdfs://node01:8020/dataset/wordcount.txt")
+		// 3.通过其它的 RDD 衍生新的 RDD
+		val words = source.flatMap { line => line.split(" ") }
+	```
+
+	### 4.3 RDD 的算子
+	**1.RDD 的算子大致分为两类: **
+	1. Transformation(转换)：转换算子操作, 例如 map flatMap filter 等，作用是生成新RDD，以及RDD之间的依赖关系。
+	2. Action(动作)：动作算子操作, 例如 reduce collect show first等，作用是生成job，执行job，每个action都会完整运行全部RDD。
+
+	Transformations 算子：map、flatMap、filter、mapPartitions、mapPartitionsWithIndex、mapValues、union、
+		intersection、subtract、distinct、reduceByKey、groupByKey、combineByKey、aggregateByKey、foldByKey、join
+	Action 算子：reduce、collect、count、first、take、fold、foreach、countByKey
+
+	**2.一般情况下 RDD 要处理的数据有三类：**
+	* 字符串
+	* 键值对
+	* 数字型
+
+	### 4.4 RDD的 Shuffle 和分区
+	**1.分区的作用：**
+		用来实现分布式并行处理数据，尽量的保持RDD的分区数和数据源的分区数一一对应。
+	**2.Shuffle 操作的特点：**
+	* 只有 Key-Value 型的 RDD 才会有 Shuffle 操作, 例如 RDD[(K, V)], 但是有一个特例, 就是 repartition 算子可以对任何数据类型 Shuffle
+	* 早期版本 Spark 的 Shuffle 算法是 Hash base shuffle, 后来改为 Sort base shuffle, 更适合大吞吐量的场景。
+
+	> **注意：**
+	可以通过 rdd.partitions.size 来查看分区数量。
+	可以通过 repartition、coalesce 算子指定分区数
+
+	**3.RDD 的 Shuffle 原理：**
+	Spark 的 Shuffle 发展大致有两个阶段: Hash base shuffle 和 Sort base shuffle
+
+	### 4.4 缓存
+	**1.缓存的作用：**
+	1. 多次使用 RDD。 RDD 需要重复多次利用, 并且还不是特别大的情况下使用, 例如迭代计算等场景
+	2. 容错。
+
+	**2.缓存方法签名如下**
+	`cache(): this.type = persist()`
+
+	**3.缓存级别：**
+	如何缓存是一个技术活, 有很多细节需要思考, 如下
+		是否使用磁盘缓存?
+		是否使用内存缓存?
+		是否使用堆外内存?
+		缓存前是否先序列化?
+		是否需要有副本?
+		
+	### 4.5 Checkpoint
+	**1.Checkpoint 的作用：**
+		斩断 RDD 的依赖链, 并且将数据存储在可靠的存储引擎中, 例如支持分布式存储和副本机制的 HDFS.
+		Checkpoint类似hdfs的NameNode的FsImage
+		
+	**2.Checkpoint 的使用：**
+	``` scala
+
+		val conf = new SparkConf().setMaster("local[6]").setAppName("debug_string")
+		val sc = new SparkContext(conf)
+		
+		// 1.设置 Checkpoint 的存储路径
+		sc.setCheckpointDir("checkpoint") 
+
+		val interimRDD = sc.textFile("dataset/access_log_sample.txt")
+		  .map(item => (item.split(" ")(0), 1))
+		  .filter(item => StringUtils.isNotBlank(item._1))
+		  .reduceByKey((curr, agg) => curr + agg)
+		  // 2.checkpoint 之前先 cache 一下, 因为 checkpoint 会重新计算整个 RDD 的数据然后再存入 HDFS 等地方.
+		  .cache()
+		// 3.开启 Checkpoint
+		interimRDD.checkpoint() 
+
+		interimRDD.collect().foreach(println(_))
+		sc.stop()
+	```
+
+	**3.Checkpoint 和 Cache 的区别3点：**
+	1. Checkpoint 可以保存数据到 HDFS 这类可靠的存储上, Persist 和 Cache 只能保存在本地的磁盘和内存中
+	2. Checkpoint 可以斩断 RDD 的依赖链, 而 Persist 和 Cache 不行
+	3. Checkpoint的RDD没有向上的依赖链, 所以程序结束后依然存在, 不会被删除. 而 Cache 和 Persist 会在程序结束后立刻被清除.
+
+---
+## 5.Spark 底层原理
+	### 5.1 Spark集群中运行的主要角色
+	1. Master Daemon：协调节点
+		负责管理 Master 节点, 协调资源的获取, 以及连接 Worker 节点来运行 Executor, 是 Spark 集群中的协调节点。
+	2. Worker Daemon：工作节点
+		Workers 也称之为叫 Slaves, 是 Spark 集群中的计算节点, 用于和 Master 交互并管理 Executor。
+		当一个 Spark Job 提交后, 会创建 SparkContext, 后 Worker 会启动对应的 Executor。
+	3. Executor Backend：
+		Worker 是通过 Executor Backend 来进行控制的, Executor Backend 是一个JVM进程, 持有一个 Executor 对象。
+	4. Driver：
+		Driver 是一个 JVM 进程, 是 Spark Application 运行时候的领导者, 其中运行了 SparkContext.
+		Driver 控制 Job 和 Task, 并且提供 WebUI.	
+	5. Executor：
+		Executor 对象中通过线程池来运行 Task, 一个 Executor 中只会运行一个 Spark Application 的 Task,
+		不同的 Spark Application 的 Task 会由不同的 Executor 来运行	
+
+	### 5.2 逻辑执行图和物理执行图
+	**逻辑执行图：**
+		本质就是RDD的计算流程、计算链。
+	**物理执行图：**
+		当触发 Action 执行的时候, 这一组互相依赖的 RDD 要被处理, 所以要转化为可运行的物理执行图, 调度到集群中执行.
+		
+	### 5.3 RDD的窄依赖和宽依赖
+	**RDD 的分区间的关系有2种形式：**
+		一对一, 一般是直接转换
+		多对一, 一般是 Shuffle   
+	**窄依赖和宽依赖判断依据：**
+		分区之间1对1关系是窄依赖，多对1则需要看分区是否数据分发、shuffle判断宽依赖
+		常见的窄依赖：一对一窄依赖、Range窄依赖、多对一窄依赖
+		宽窄依赖的核心区别是: 窄依赖的 RDD 对应的分区可以放在一个 Task 中运行
+	宽依赖应该称作为 ShuffleDependency
+
+	### 5.4 划分Task和Stage
+	**整个逻辑执行图中所有的 RDD 都由一组 Task 来执行，RDD之间创建管道(Pipeline)，让所有的 RDD 有关联的分区使用同一个 Task。**
+	**RDD 之间的 Shuffle 处划分Stage(阶段，从后往前划分)，Stage(阶段)之间断开管道，再划分Task。**
+
+	> **注意：**
+	RDD的五个属性简单的说就是: 分区列表, 计算函数, 依赖关系, 分区函数, 最佳位置
+
+	### 5.5 调度过程
+	**1.Job 是什么**
+	如果要将 Spark 的程序调度到集群中运行, Job 是粒度最大的单位, 调度以 Job 为最大单位, 将 Job 拆分为 Stage 和 Task 去调度分发和运行, 
+	一个 Job 就是一个 Spark 程序从 读取 → 计算 → 运行 的过程。
+
+	**2.Job 什么时候生成**
+	当一个 RDD 调用了 Action 算子的时候, 在 Action 算子内部, 会使用 sc.runJob() 调用 SparkContext 中的 runJob方法, 这个方法又会调用 DAGScheduler 中的 runJob, 
+	后在 DAGScheduler 中使用消息驱动的形式创建 Job，job 又拆分为 Stage 和 Task 去调度分发和运行。
+	**简而言之, Job 在 RDD 调用 Action 算子的时候生成, 而且调用一次 Action 算子, 就会生成一个 Job, 如果一个 SparkApplication 中调用了多次 Action 算子, 
+	会生成多个 Job 串行执行, 每个 Job 独立运作, 被独立调度, 所以 RDD 的计算也会被执行多次。**
+
+	**3.Job 和 Stage 的关系**
+	1个Job有多个Stage，Stage之间是串行的，
+	**4.Stage 和 Task 的关系**
+	1个Stage中有多个Task，1个Stage对应1个TaskSet，TaskSet是一组Task
+
+	### 5.6 Shuffle 过程
+	有3个 ShufflWriter实现：BypassMergeSortShuffleWriter、SortShuffleWriter、UnsafeShuffleWriter
+	**Shuffle的默认的实现 SortShuffleWriter **
+
+	### 5.7 RDD分布式共享变量
+	**RDD算子闭包问题（作用域访问变量）**
+	**1.累加器**
+	Accumulators(累加器) 是一个只支持 added(添加) 的分布式变量, 可以在分布式环境下保持一致性, 并且能够做到高效的并发.
+	``` scala
+		val config = new SparkConf().setAppName("ip_ana").setMaster("local[6]")
+		val sc = new SparkContext(config)
+		// 1.使用累加器
+		val counter = sc.longAccumulator("counter")
+
+		sc.parallelize(Seq(1, 2, 3, 4, 5))
+		  .foreach(counter.add(_))
+
+		// 运行结果: 15
+		println(counter.value)
+	```
+	> **注意：**
+	自定义累加器：继承 AccumulatorV2 来创建新的累加器
+		重写：
+		reset 方法用于把累加器重置为 0
+		add 方法用于把其它值添加到累加器中
+		merge 方法用于指定如何合并其他的累加器
+		value 需要返回一个不可变的集合, 因为不能因为外部的修改而影响自身的值
+		
+	**2.广播变量**
+	广播变量允许开发者将一个 Read-Only 的变量缓存到集群中每个节点中, 而不是传递给每一个 Task 一个副本.
+	使用：val b = sc.broadcast(obj)
+	使用场景：
+		广播变量用于将变量缓存在集群中的机器中, 避免机器内的 Executors 多次使用网络拉取数据
+	广播变量的使用步骤:
+	(1) 创建 (2) 在 Task 中获取值 (3) 销毁

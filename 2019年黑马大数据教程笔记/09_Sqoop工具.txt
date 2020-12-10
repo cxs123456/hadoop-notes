@@ -1,0 +1,221 @@
+## 1.Sqoop 介绍(Sqoop是什么，应用场景)
+	
+	### 1.Sqoop是什么、应用场景
+	**Apache Sqoop 是在 Hadoop 生态体系和 RDBMS 体系之间传送数据的一种工具。**
+	**可以简单理解为：Sqoop 数据库到Hadoop的导入导出工具**
+	**Sqoop 可以理解为： “SQL 到 Hadoop 和 Hadoop 到 SQL” 。**
+	**应用场景：数据库到Hadoop的导入导出。**
+
+## 2.Sqoop 安装
+	安装 sqoop 的前提是已经具备 java 和 hadoop 的环境。
+	最新稳定版： 1.4.6
+	① 修改配置文件： sqoop-env.sh
+	cd $SQOOP_HOME/conf
+	cp sqoop-env-template.sh sqoop-env.sh
+	vi sqoop-env.sh
+	export HADOOP_COMMON_HOME= /export/servers/hadoop-2.7.5
+	export HADOOP_MAPRED_HOME= /export/servers/hadoop-2.7.5
+	export HIVE_HOME= /export/servers/hive
+	② 加入 mysql 的 jdbc 驱动包
+	cp mysql-connector-java-5.1.32.jar $SQOOP_HOME/lib/
+	③ 验证启动
+	bin/sqoop list-databases \
+	--connect jdbc:mysql://localhost:3306/ \
+	--username root --password hadoo	
+	该命令会列出所有 mysql 的数据库。
+	
+## 3.Sqoop 使用
+	
+	### 1.Sqoop 导入
+	**1.import语法 **
+	sqoop import (generic-args) (import-args)
+	**2.导入示例 **
+	```
+	# ① 全量导入 mysql 表数据到 HDFS
+	bin/sqoop import \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root \
+	--password hadoop \
+	--delete-target-dir \
+	--target-dir /sqoopresult \
+	--table emp --m 1
+	# 其中--target-dir 可以用来指定导出数据存放至 HDFS 的目录	
+	# --fields-terminated-by '\t'来指定分隔符
+	
+	# ② 全量导入 mysql 表数据到 HIVE
+	# 方式一：先复制表结构到 hive 中再导入数据
+	# 将关系型数据的表结构复制到 hive 中
+	bin/sqoop create-hive-table \
+	--connect jdbc:mysql://node-1:3306/sqoopdb \
+	--username root \
+	--password hadoop \
+	--table emp_add \
+	--hive-table test.emp_add_sp
+	# 其中：--table emp_add 为 mysql 中的数据库 sqoopdb 中的表。
+	# --hive-table emp_add_sp 为 hive 中新建的表名称。		
+	
+	# 从关系数据库导入文件到 hive 中
+	bin/sqoop import \
+	--connect jdbc:mysql://node-1:3306/sqoopdb \
+	--username root \
+	--password hadoop \
+	--table emp_add \
+	--hive-table test.emp_add_sp \
+	--hive-import \
+	--m 1
+	
+	# 方式二： 直接复制表结构数据到 hive 中
+	bin/sqoop import \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root \
+	--password hadoop \
+	--table emp_conn \
+	--hive-import \
+	--m 1 \
+	--hive-database test;
+	
+	# ③ 导入表数据子集(where 过滤)
+	bin/sqoop import \
+	--connect jdbc:mysql://node-1:3306/sqoopdb \
+	--username root \
+	--password hadoop \
+	--where "city ='sec-bad'" \
+	--target-dir /wherequery \
+	--table emp_add --m 1
+	
+	# ④ 导入表数据子集(query 查询)
+	bin/sqoop import \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root \
+	--password hadoop \
+	--target-dir /wherequery12 \
+	--query 'select id,name,deg from emp WHERE id>1203 and $CONDITIONS' \
+	--split-by id \
+	--fields-terminated-by '\t' \
+	--m 2
+
+	```
+	**3.增量导入 **
+	在实际工作当中，数据的导入，很多时候都是只需要导入增量数据即可，并不需要将表中的数据每次都全部导入
+	到 hive 或者 hdfs 当中去，这样会造成数据重复的问题。 
+	**增量导入是仅导入新添加的表中的行的技术。 **
+	① --check-column (col)
+	用来指定一些列，这些列在增量导入时用来检查这些数据是否作为增量数据
+	进行导入，和关系型数据库中的自增字段及时间戳类似。
+	② --incremental (mode)
+	append：追加，比如对大于 last-value 指定的值之后的记录进行追加导入。
+	lastmodified：最后的修改时间，追加 last-value 指定的日期之后的记录
+	③ --last-value (value)
+	指定自从上次导入后列的最大值（大于该指定的值），也可以自己设定某一值
+	
+	示例：
+	```
+	# 1.Append 模式增量导入
+	bin/sqoop import \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root --password hadoop \
+	--table emp --m 1 \
+	--target-dir /appendresult \
+	--incremental append \
+	--check-column id \
+	--last-value 1205
+	
+	# 2.Lastmodified 模式增量导入
+	# lastmodified 模式去处理增量时，会将大于等于 lastvalue 值的数据当做增量插入。
+	bin/sqoop import \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root \
+	--password hadoop \
+	--table customertest \
+	--target-dir /lastmodifiedresult \
+	--check-column last_mod \
+	--incremental lastmodified \
+	--last-value "2019-05-28 18:42:06" \
+	--m 1 \
+	--append
+	
+	# 3.Lastmodified 模式:append、 merge-key
+	merge-key(合并)模式会更新hdfs文件中数据
+	```
+
+	### 2.Sqoop 导出
+	将数据从 Hadoop 生态体系导出到 RDBMS 数据库导出前， 目标表必须存在于目标数据库中
+	
+	**1.export语法 **
+	sqoop export (generic-args) (import-args)
+	**export 有三种模式：**
+	默认模式导出 HDFS 数据到 mysql
+	更新模式： Sqoop 将生成 UPDATE 替换数据库中现有记录的语句。
+	调用模式： Sqoop 将为每条记录创建一个存储过程调用。
+	
+	**2.导出示例 **
+	```
+	# 1.默认模式导出 HDFS 数据到 mysql
+	bin/sqoop export \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root \
+	--password hadoop \
+	--table employee \
+	--export-dir /emp/emp_data	
+	
+	# 2.更新导出（ updateonly 模式）
+	# -- update-key，更新标识，即根据某个字段进行更新
+	# -- updatemod， 指定 updateonly（默认模式），仅仅更新已存在的数据记录，不会插入新纪录。
+	bin/sqoop export \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root --password hadoop \
+	--table updateonly \
+	--export-dir /updateonly_2/ \
+	--update-key id \
+	--update-mode updateonly
+	
+	# 3.更新导出（ allowinsert 模式）
+	# -- updatemod， 指定 allowinsert，更新已存在的数据记录， 同时插入新纪录。
+	bin/sqoop export \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root --password hadoop \
+	--table allowinsert \
+	--export-dir /allowinsert_2/ \
+	--update-key id \
+	--update-mode allowinsert
+	```
+	
+	### 3.Sqoop job 作业
+	**1.job 语法**
+	sqoop job (generic-args) (job-args) [-- [subtool-name] (subtool-args)]
+	
+	**2.job示例 **
+	```
+	# 1.创建job
+	# 创建一个从 数据库的 emp 表导入到 HDFS 文件的作业
+	bin/sqoop job --create itcastjob -- import \
+	--connect jdbc:mysql://node-1:3306/userdb \
+	--username root \
+	--password hadoop \
+	--target-dir /sqoopresult333 \
+	--table emp --m 1
+	# 注意 import 前要有空格
+	
+	# 2.验证 job，检查job
+	bin/sqoop job --list
+	bin/sqoop job --show itcastjob
+	
+	# 3.执行 job
+	bin/sqoop job --exec itcastjob
+	```
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
