@@ -323,6 +323,7 @@ SourceFile: "Test1.java"
 
 #### 根据pid查询 docker 容器 id
 docker inspect -f "{{.Id}}"  $(docker ps -q) |grep <PID>
+ps -ef|grep java|grep <PID>
 #### 该进程内最耗费CPU的线程，将线程转成16进制，再jstack获取线程上下文
 top -Hp pid
 printf "%x\n" 21742  
