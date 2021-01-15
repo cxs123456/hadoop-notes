@@ -246,10 +246,13 @@ tomcat的运行模式有3种：
 ### 5.2 tomcat的jvm调优
 *catalina.sh 中设置：**
 ``` shell
-	# 示例：设置G1垃圾回收器，设置了最大停顿时间100毫秒，初始堆内存128m，最大堆内存1024m
+	# 示例1：设置G1垃圾回收器，设置了最大停顿时间100毫秒，初始堆内存128m，最大堆内存1024m
 	JAVA_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Xms128m -Xmx1024m -XX:+PrintGCDetails 
 		-XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+PrintHeapAtGC -Xloggc:../logs/gc.log"
-
+	
+	# 示例2：设置G1垃圾回收器，设置了最大停顿时间100毫秒，设置初始堆内存和最大堆内存1024m，设置让 JVM 碰到 OOM 场景时输出 dump 信息
+	JAVA_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Xms1024m -Xmx1024m -XX:+HeapDumpOnOutOfMemoryError
+	
 ```
 	
 
